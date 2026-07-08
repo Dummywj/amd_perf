@@ -1,0 +1,24 @@
+[submodule "third_party/google-benchmark"]
+	path = third_party/google-benchmark
+	url = https://github.com/google/benchmark.git
+	shallow = true
+[submodule "third_party/likwid"]
+	path = third_party/likwid
+	url = https://github.com/RRZE-HPC/likwid.git
+	shallow = true
+[submodule "third_party/highway"]
+	path = third_party/highway
+	url = https://github.com/google/highway.git
+	shallow = true
+[submodule "third_party/sleef"]
+	path = third_party/sleef
+	url = https://github.com/shibatch/sleef.git
+	shallow = true
+[submodule "third_party/onednn"]
+	path = third_party/onednn
+	url = https://github.com/uxlfoundation/oneDNN.git
+	shallow = true
+[submodule "third_party/uarch-bench"]
+	path = third_party/uarch-bench
+	url = https://github.com/travisdowns/uarch-bench.git
+	shallow = true

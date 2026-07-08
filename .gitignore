@@ -1,0 +1,42 @@
+# Build outputs
+build/
+cmake-build-*/
+out/
+bin/
+lib/
+
+# Generated benchmark data
+results/
+*.csv
+*.json
+*.log
+
+# Object and binary files
+*.o
+*.obj
+*.a
+*.so
+*.dylib
+*.dll
+*.exe
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+compile_commands.json
+CTestTestfile.cmake
+Testing/
+
+# Editor and local environment
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Python helper caches
+__pycache__/
+*.pyc
+.pytest_cache/
+

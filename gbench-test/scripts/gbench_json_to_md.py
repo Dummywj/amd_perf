@@ -33,6 +33,16 @@ def main():
     context = data.get("context", {})
     rows = data.get("benchmarks", [])
 
+    columns = [
+        ("Benchmark", "name"),
+        ("Iterations", "iterations"),
+        ("Core Cycles", "core_cycles"),
+        ("elem/core_cycle", "elem/core_cycle"),
+        ("fma_instr/core_cycle", "fma_instr/core_cycle"),
+        ("flop/core_cycle", "flop/core_cycle"),
+        ("items/s", "items_per_second"),
+    ]
+
     lines = [
         "# Google Benchmark 结果",
         "",
@@ -42,20 +52,18 @@ def main():
         f"- CPU 数量：{context.get('num_cpus', '')}",
         f"- Google Benchmark 版本：{context.get('library_version', '')}",
         "",
-        "| Benchmark | Iterations | Core Cycles | elem/core_cycle | items/s |",
-        "| --- | ---: | ---: | ---: | ---: |",
+        "| " + " | ".join(name for name, _ in columns) + " |",
+        "| --- | ---: | ---: | ---: | ---: | ---: | ---: |",
     ]
 
     for row in rows:
-        lines.append(
-            "| {name} | {iterations} | {core_cycles} | {elem_cycle} | {items_s} |".format(
-                name=row.get("name", ""),
-                iterations=fmt_number(row.get("iterations")),
-                core_cycles=fmt_number(row.get("core_cycles")),
-                elem_cycle=fmt_number(row.get("elem/core_cycle")),
-                items_s=fmt_number(row.get("items_per_second")),
-            )
-        )
+        cells = []
+        for _, key in columns:
+            if key == "name":
+                cells.append(row.get(key, ""))
+            else:
+                cells.append(fmt_number(row.get(key)))
+        lines.append("| " + " | ".join(cells) + " |")
 
     lines.append("")
     output_path.write_text("\n".join(lines), encoding="utf-8")
@@ -63,4 +71,3 @@ def main():
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

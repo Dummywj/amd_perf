@@ -18,16 +18,21 @@ add_subdirectory(
   EXCLUDE_FROM_ALL
 )
 
-add_executable(gbench_smoke
-  benchmarks/smoke_bench.cpp
-)
+function(add_gbench_target target_name source_file)
+  add_executable(${target_name}
+    ${source_file}
+  )
 
-target_include_directories(gbench_smoke PRIVATE
-  "${CMAKE_CURRENT_LIST_DIR}/include"
-)
+  target_include_directories(${target_name} PRIVATE
+    "${CMAKE_CURRENT_LIST_DIR}/include"
+  )
 
-target_link_libraries(gbench_smoke PRIVATE benchmark::benchmark)
+  target_link_libraries(${target_name} PRIVATE benchmark::benchmark)
 
-target_compile_options(gbench_smoke PRIVATE
-  $<$<CXX_COMPILER_ID:GNU,Clang>:-O3 -march=native -Wall -Wextra -Wpedantic>
-)
+  target_compile_options(${target_name} PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang>:-O3 -march=native -Wall -Wextra -Wpedantic>
+  )
+endfunction()
+
+add_gbench_target(gbench_smoke benchmarks/smoke_bench.cpp)
+add_gbench_target(fma_register_peak_bench benchmarks/fma_register_peak_bench.cpp)

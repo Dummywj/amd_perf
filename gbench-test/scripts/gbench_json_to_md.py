@@ -33,14 +33,25 @@ def main():
     context = data.get("context", {})
     rows = data.get("benchmarks", [])
 
-    columns = [
+    candidate_columns = [
         ("Benchmark", "name"),
         ("Iterations", "iterations"),
+        ("Elements", "elements"),
+        ("Working Set Bytes", "working_set_bytes"),
+        ("FMA Rounds", "fma_rounds"),
+        ("Inner Passes", "inner_passes"),
         ("Core Cycles", "core_cycles"),
         ("elem/core_cycle", "elem/core_cycle"),
         ("fma_instr/core_cycle", "fma_instr/core_cycle"),
         ("flop/core_cycle", "flop/core_cycle"),
+        ("bytes/core_cycle", "bytes/core_cycle"),
+        ("flop/byte", "flop/byte"),
         ("items/s", "items_per_second"),
+    ]
+    columns = [
+        (name, key)
+        for name, key in candidate_columns
+        if key == "name" or any(key in row for row in rows)
     ]
 
     lines = [
@@ -53,7 +64,7 @@ def main():
         f"- Google Benchmark 版本：{context.get('library_version', '')}",
         "",
         "| " + " | ".join(name for name, _ in columns) + " |",
-        "| --- | ---: | ---: | ---: | ---: | ---: | ---: |",
+        "| " + " | ".join("---" if key == "name" else "---:" for _, key in columns) + " |",
     ]
 
     for row in rows:

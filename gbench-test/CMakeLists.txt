@@ -36,3 +36,4 @@ endfunction()
 
 add_gbench_target(gbench_smoke benchmarks/smoke_bench.cpp)
 add_gbench_target(fma_register_peak_bench benchmarks/fma_register_peak_bench.cpp)
+add_gbench_target(fp32_fma_length_sweep_bench benchmarks/fp32_fma_length_sweep_bench.cpp)

@@ -1,19 +1,33 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [[ $# -ne 3 ]]; then
-  echo "usage: collect_ops_environment.sh <output.md> <cpu> <smt-sibling>" >&2
+if [[ $# -ne 3 && $# -ne 4 ]]; then
+  echo "usage: collect_ops_environment.sh <output.md> <cpu> <smt-sibling> [dense-exploratory]" >&2
   exit 2
 fi
 
 output=$1
 cpu=$2
 sibling=$3
+mode=${4:-formal}
 root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
 
 exec >"$output"
 
-echo "# FP32 operations environment"
+if [[ "$mode" == "dense-exploratory" ]]; then
+  echo "# EXPLORATORY / NON-FORMAL - Dense FP32 environment"
+  echo
+  echo "**This newly collected dense run may be affected by external Java/ZGC activity and CPU contention.**"
+  echo
+  echo "**Relative trends only. Do not use for absolute performance, cross-machine comparisons, performance regression, capacity planning, hardware limits, or formal acceptance.**"
+  echo
+elif [[ "$mode" != "formal" ]]; then
+  echo "unknown mode: $mode" >&2
+  exit 2
+else
+  echo "# FP32 operations environment"
+  echo
+fi
 echo
 echo "- Selected CPU: \`$cpu\`"
 echo "- SMT sibling: \`$sibling\`"

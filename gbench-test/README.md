@@ -14,10 +14,23 @@ The approved single-core operation suite provides these payloads:
 
 | Payload | Cases |
 | --- | ---: |
-| `reduce-fp32` | 36 |
-| `gather-fp32` | 72 |
-| `scatter-fp32` | 72 |
-| `softmax-fp32` | 18 |
+| `reduce-fp32` | 452 |
+| `gather-fp32` | 1,017 |
+| `scatter-fp32` | 1,017 |
+| `softmax-fp32` | 226 |
+| **Total** | **2,712** |
+
+Each curve uses 113 deterministic integer sizes:
+
+```text
+base = {1024, 1136, 1248, 1376, 1520, 1680, 1856}
+sizes = {base[j] << octave | octave=0..15, j=0..6} U {1 << 26}
+```
+
+Indexed Gather/Scatter keep `scalar` plus explicitly named
+`avx512_vgather` / `avx512_vscatter` implementations for all four index
+patterns. The `contiguous/avx512_load_store` curve is a separate cached-copy
+control with no index allocation or access and an `8N` logical-byte model.
 
 Build all kernels and the correctness gate in an independent build directory:
 
@@ -39,7 +52,10 @@ make run PAYLOAD=reduce-fp32 BUILD_DIR=build-ops-release CPU=8 NUMA_NODE=0 \
   RESULTS_DIR=results/ops_fp32_<timestamp>
 ```
 
-The ops Makefile path performs one NUMA-bound run with 7 randomized repetitions
-and a 0.25-second minimum time. Use `scripts/ops_report.py` to derive the
-Markdown stability table and SVG from the raw JSON. The full frozen semantics,
-correctness thresholds, and stop conditions are in `docs/test-plan.md`.
+The ops Makefile path performs one NUMA-bound dense run with 7 randomized
+repetitions and a 0.25-second minimum time. Use `scripts/ops_report.py --dense`
+to validate all 113 points per curve and derive the Markdown stability table
+and SVG from the raw JSON. The 2,712-case kernel-time lower bound is 79 minutes;
+initialization and deterministic shuffles make 2-4 hours a realistic full-run
+estimate. The frozen semantics, correctness thresholds, and execution rules are
+in `docs/test-plan.md`.

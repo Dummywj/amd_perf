@@ -92,7 +92,7 @@ endif
 ifneq ($(filter $(PAYLOAD),fp32-fma-length-sweep fp32_fma_length_sweep),)
 	python3 scripts/plot_fma_length_sweep.py $(RESULT_JSON) $(PLOT_SVG)
 else ifneq ($(filter $(PAYLOAD),reduce-fp32 gather-fp32 scatter-fp32 softmax-fp32),)
-	python3 scripts/ops_report.py $(RESULT_JSON) $(REPORT_MD) $(PLOT_SVG)
+	python3 scripts/ops_report.py $(RESULT_JSON) $(REPORT_MD) $(PLOT_SVG) --dense
 else
 	@printf 'plot: PAYLOAD=%s has no plot generator; generated %s and %s\n' "$(PAYLOAD)" "$(RESULT_JSON)" "$(REPORT_MD)"
 endif

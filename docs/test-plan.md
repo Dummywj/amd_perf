@@ -10,10 +10,11 @@
 | 第一次补充批准日期 | 2026-07-14（`stride17` correctness-only 适用条件） |
 | 第二次补充批准日期 | 2026-07-14（可归因运行环境门禁和完整第三批重采） |
 | 第三次补充批准日期 | 2026-07-14（采用既有第一批生成非正式探索性报告） |
+| 第四次补充批准日期 | 2026-07-14（113 点 dense sweep 和连续 load/store 对照） |
 | 本轮算子 | Softmax、Reduce、Gather、Scatter |
 | 本轮数据类型 | FP32 |
 
-本文档曾以“待用户审核，禁止执行”状态冻结；用户于 2026-07-14 明确审核通过，执行门禁现已解除并进入执行阶段。执行期间发现 `stride17` 与两个 correctness-only 尺寸的唯一索引约束冲突，执行已按门禁暂停；用户批准本文件记录的 `N/A` 修订后恢复执行。随后，旧的“出现任何全局 swap 即停止”规则无法区分本轮进程污染和外部微量换入，执行再次按门禁暂停；用户于 2026-07-14 第二次补充批准本文件记录的可归因门禁和完整第三批重采后恢复执行。用户又于 2026-07-14 第三次补充批准：允许从完整第一批生成明确标注为非正式的探索性报告。该例外不改变第一批的正式失效状态，也不降低未来正式采集门禁。主性能范围、语义、指标、四模式矩阵和 198 个 case 保持不变；后续若需修改，仍须先更新本文档并重新获得批准。
+本文档曾以“待用户审核，禁止执行”状态冻结；用户于 2026-07-14 明确审核通过，执行门禁现已解除并进入执行阶段。执行期间发现 `stride17` 与两个 correctness-only 尺寸的唯一索引约束冲突，执行已按门禁暂停；用户批准本文件记录的 `N/A` 修订后恢复执行。随后，旧的“出现任何全局 swap 即停止”规则无法区分本轮进程污染和外部微量换入，执行再次按门禁暂停；用户于 2026-07-14 第二次补充批准本文件记录的可归因门禁和完整第三批重采后恢复执行。用户又于 2026-07-14 第三次补充批准：允许从完整第一批生成明确标注为非正式的探索性报告。该例外不改变第一批的正式失效状态，也不降低未来正式采集门禁。用户当前消息构成第四次补充批准：将新探索性 dense run 扩展为每条曲线 113 个尺寸，并为 Gather/Scatter 增加普通 AVX-512 load/store 对照；该范围已经批准，无需再次审核即可实施。未来正式采集门禁继续保留；后续若再修改范围或语义，仍须先更新本文档并重新获得批准。
 
 ## 背景
 
@@ -63,6 +64,7 @@
 - AVX-512 kernel 使用显式 intrinsic，并对尾部使用 mask 或等价的边界安全处理。
 - 构建后检查反汇编：scalar 不得出现向量化主体；AVX-512 版本必须出现预期的 AVX-512 指令。Gather/Scatter 分别应出现对应的 gather/scatter 指令。
 - scalar 与 AVX-512 版本必须使用相同输入、相同算子语义、相同输出精度和相同逻辑 pass；不得为提高某一版本成绩而跳过必要步骤。
+- 第四次补充批准新增的 contiguous kernel 必须使用显式 `_mm512_loadu_ps`/`_mm512_storeu_ps`；禁止替换为 `memcpy`、`std::copy`、non-temporal store 或保留但不读取的虚假 index 流。反汇编必须确认 contiguous 主体只有普通 AVX-512 load/store，不含 gather/scatter 或库 copy 调用。
 
 ### Softmax 的 SLEEF 基线
 
@@ -131,6 +133,13 @@ out[i] = table[index[i]], 0 <= i < K
 - 首轮固定 `K = M = N`。
 - 所有实际执行的索引模式都必须生成一个置换，因此没有重复索引；这是为使 Gather/Scatter 的工作集和访问覆盖可比较。`stride17` 的 correctness-only 例外组合按下文明确标记为 `N/A`，不实际执行。
 
+第四次补充批准将以下两个语义不同的曲线同时保留：
+
+- `gather/sequential/avx512_vgather`：仍构造并读取 `index[i] = i`，主体必须使用 `_mm512_i32gather_ps`/`vgatherdps`。这是“连续索引下的强制 indexed gather”，不是普通连续 load。
+- `gather/contiguous/avx512_load_store`：不分配、不构造、不读取 index，执行 `out[i] = table[i]`，主体使用普通 AVX-512 load/store。这是移除 index 流和间接寻址后的 cached copy 对照，不得称为 gather 的第三种等价实现。
+
+其他 indexed pattern 的 AVX-512 实现名同样明确为 `avx512_vgather`；scalar 名保持 `scalar`。报告脚本可以兼容历史结果中的旧名 `avx512`，但新的 dense run 必须使用上述显式命名。
+
 ### Scatter
 
 输入包括长度为 `K` 的 FP32 `src`、长度为 `K` 的 `uint32_t index` 和长度为 `M` 的 FP32 `dst`：
@@ -142,6 +151,13 @@ dst[index[i]] = src[i], 0 <= i < K
 - 首轮固定 `K = M = N`。
 - 所有索引唯一，因此每个目标位置恰好写一次，不定义重复索引的先后覆盖语义。
 - 不读取旧 `dst` 值，不执行加法，不使用原子操作。
+
+第四次补充批准将以下两个语义不同的曲线同时保留：
+
+- `scatter/sequential/avx512_vscatter`：仍构造并读取 `index[i] = i`，主体必须使用 `_mm512_i32scatter_ps`/`vscatterdps`。
+- `scatter/contiguous/avx512_load_store`：不分配、不构造、不读取 index，执行 `dst[i] = src[i]`，主体使用普通 AVX-512 load/store。这是 cached copy 对照，不得称为 scatter 的等价实现。
+
+其他 indexed pattern 的 AVX-512 实现名明确为 `avx512_vscatter`。
 
 ## 输入与索引构造
 
@@ -157,8 +173,8 @@ Gather/Scatter 主性能矩阵使用以下四种索引置换：
 
 | 模式 | 精确定义 | 目的 |
 | --- | --- | --- |
-| `sequential` | `index[i] = i` | 连续访问上限 |
-| `stride17` | `index[i] = (17 * i) mod M`，仅当 `gcd(17, M) = 1` 时适用 | 固定 17 元素步长；主性能矩阵的 `M` 均为 2 的幂，因此是置换 |
+| `sequential` | `index[i] = i`，indexed AVX-512 路径仍强制执行 `vgatherdps`/`vscatterdps` | 连续索引下的间接访存上限，不等同于 contiguous load/store |
+| `stride17` | `index[i] = (17 * i) mod M`，仅当 `gcd(17, M) = 1` 时适用 | 固定 17 元素步长；dense 尺寸表通过结构断言保证与 17 互素，因此是置换 |
 | `block_random_4k` | 将 `[0, M)` 按最多 4096 个元素分块，只在各块内使用确定性 Fisher-Yates shuffle | 保留块局部性的随机访问 |
 | `uniform_random` | 对完整 `[0, M)` 使用确定性 Fisher-Yates shuffle | 覆盖全工作集的随机置换 |
 
@@ -168,27 +184,46 @@ Gather/Scatter 主性能矩阵使用以下四种索引置换：
 
 ## 尺寸矩阵与 case 数量
 
-主性能矩阵使用以下 9 个长度：
+前三批使用的 sparse 矩阵为 9 个长度、198 个 case，仅作为历史结果说明。第四次补充批准的新 dense run 将每条性能曲线扩展为 113 个确定性长度。
+
+### 113 点整数尺寸公式
+
+基础模板为：
 
 ```text
-1K, 4K, 16K, 64K, 256K, 1M, 4M, 16M, 64M
+base = {1024, 1136, 1248, 1376, 1520, 1680, 1856}
+sizes = {base[j] << octave | octave = 0..15, j = 0..6} U {1 << 26}
 ```
 
-其中 `K`、`M`、`N` 均以元素个数表示，`1K = 1024`、`1M = 1024 * 1024`。case 数量推导如下：
+实现必须按 `octave`、`j` 顺序生成前 112 个点，再追加 `1 << 26`，不得使用运行时浮点 `pow/exp2` 重新取整。`base` 是 `1024 * 2^(j/7)` 取到最接近 16 元素倍数后的固定整数模板；相邻点约为 `1.10x`，每个半开倍增区间有 7 个点，终点为 64M。
+
+尺寸生成后必须在注册 benchmark 前断言：
+
+- 数量恰好为 113，首点为 `1 << 10`，末点为 `1 << 26`。
+- 严格递增且全部 unique。
+- 每个 `N` 都满足 `N % 16 == 0`。
+- `1K, 2K, 4K, ..., 64M` 的所有 2 次幂锚点都存在，原 9 个 sparse 锚点自然保留。
+- 每个 `N` 都满足 `gcd(17, N) == 1`，因此 dense 主矩阵的 `stride17` 全部有效。
+
+其中 `K`、`M`、`N` 均以元素个数表示，`1K = 1024`、`1M = 1024 * 1024`。按工作集计算，Reduce 为 `4N`、Softmax 为 `8N`、indexed Gather/Scatter 为 `12N`、contiguous 对照为 `8N`；每 octave 7 点用于提高 L1、L2、LLC 和内存过渡区附近的采样密度。
+
+### Dense case 数量
 
 | 算子 | 维度 | 实现数 | case 数 |
 | --- | ---: | ---: | ---: |
-| Softmax | 9 个 N | scalar + AVX-512 | `9 * 2 = 18` |
-| Reduce | sum/max * 9 个 N | scalar + AVX-512 | `2 * 9 * 2 = 36` |
-| Gather | 4 种索引 * 9 个 N | scalar + AVX-512 | `4 * 9 * 2 = 72` |
-| Scatter | 4 种索引 * 9 个 N | scalar + AVX-512 | `4 * 9 * 2 = 72` |
-| **总计** |  |  | **198** |
+| Reduce | sum/max * 113 个 N | scalar + AVX-512，共 4 条曲线 | `2 * 2 * 113 = 452` |
+| Softmax | 113 个 N | scalar + AVX-512，共 2 条曲线 | `2 * 113 = 226` |
+| Gather indexed | 4 种索引 * 113 个 N | scalar + `avx512_vgather`，共 8 条曲线 | `4 * 2 * 113 = 904` |
+| Gather contiguous | 113 个 N | `avx512_load_store`，1 条曲线 | `113` |
+| Scatter indexed | 4 种索引 * 113 个 N | scalar + `avx512_vscatter`，共 8 条曲线 | `4 * 2 * 113 = 904` |
+| Scatter contiguous | 113 个 N | `avx512_load_store`，1 条曲线 | `113` |
+| **总计** | **24 条曲线** |  | **2,712** |
 
-198 只统计主性能 case，不包括正确性专用尺寸、构建回归、失败重跑和 `perf stat` 诊断。
+2,712 只统计 dense 主性能 case，不包括 correctness-only 尺寸、构建回归或失败运行。每个 case 运行 7 repetitions，因此应产生 `2,712 * 7 = 18,984` 条 raw repetition rows。
 
 ### Tail 正确性专用尺寸
 
-以下长度只做正确性测试，不进入性能图表或 198 个 case：
+以下长度只做正确性测试，不进入 dense 性能图表或 2,712 个 case：
 
 ```text
 1, 7, 15, 17, 1003
@@ -203,7 +238,7 @@ correctness-only 的索引模式适用规则为：
 | 1、7、15 | 执行 | 执行 | 执行 | 执行 |
 | 17、1003 | 执行 | **N/A**：`gcd(17, N) != 1` | 执行 | 执行 |
 
-因此 `(stride17, N=17)` 和 `(stride17, N=1003)` 不生成、不运行且不记为 `PASS`；正确性报告必须写为 `N/A (gcd(17, N) != 1)`。其余三种模式负责覆盖这两个尺寸的 AVX-512 tail 路径和边界安全。主性能矩阵的 9 个 `N` 均为 2 的幂，仍完整执行四种模式，所以 Gather 72 case、Scatter 72 case 和总计 198 case 均不变。
+因此 `(stride17, N=17)` 和 `(stride17, N=1003)` 不生成、不运行且不记为 `PASS`；正确性报告必须写为 `N/A (gcd(17, N) != 1)`。其余三种模式负责覆盖这两个尺寸的 AVX-512 tail 路径和边界安全。113 个 dense 主尺寸已由结构断言保证与 17 互素，仍完整执行四种 indexed 模式。
 
 ## Working Set 与逻辑字节
 
@@ -211,10 +246,14 @@ correctness-only 的索引模式适用规则为：
 | --- | ---: | ---: |
 | Reduce | `4N` | `4N + 4`，读取输入并写一个 FP32 标量 |
 | Softmax | `8N` | `20N`：max 读 `4N`，exp+sum 读写 `8N`，normalize 读写 `8N` |
-| Gather | `4M + 4K + 4K`，本轮为 `12N` | `12K`：index 读、table 逻辑读、out 写 |
-| Scatter | `4K + 4K + 4M`，本轮为 `12N` | `12K`：index 读、src 读、dst 写 |
+| Gather indexed | `4M + 4K + 4K`，本轮为 `12N` | `12K`：index 读、table 逻辑读、out 写 |
+| Gather contiguous | `4N + 4N = 8N` | `8N`：table 连续读、out 连续写，不含 index |
+| Scatter indexed | `4K + 4K + 4M`，本轮为 `12N` | `12K`：index 读、src 读、dst 写 |
+| Scatter contiguous | `4N + 4N = 8N` | `8N`：src 连续读、dst 连续写，不含 index |
 
-`logical bytes` 是算子语义和已冻结 pass 结构产生的逻辑流量，不等于硬件总线流量；不额外估算 write-allocate、cache line 过取、页表访问或预取。最终报告不得把逻辑 GB/s 描述成实测 DRAM 带宽。
+`logical bytes` 是算子语义和已冻结 pass 结构产生的逻辑流量，不等于硬件总线流量；不额外估算 write-allocate、cache line 过取、页表访问或预取。最终报告不得把逻辑 GB/s 描述成实测 DRAM 带宽，也不得把 contiguous 虚计为 `12N`。indexed 和 contiguous 在相同 `N` 下的比值同时包含 index 流和指令语义差异，不能称为纯 SIMD speedup。
+
+结果 counter ID 冻结如下：`implementation_id=0` 表示 scalar，`1` 表示 indexed AVX-512（Gather 为 `vgather`、Scatter 为 `vscatter`），`2` 表示 contiguous AVX-512 load/store；`pattern_id=0..3` 保持现有四种 indexed pattern，`pattern_id=4` 表示 contiguous。contiguous 必须使用独立 runner，不能复用会分配 index 的 indexed runner。
 
 ## 计时边界与指标
 
@@ -332,10 +371,10 @@ global_pswpin_rate <= 1 MiB/s
 - 第二批 `ops_fp32_20260714-155323` 不完整，并按旧的全局 swap 规则停止，只作诊断资料，不作为正式或探索性 canonical 数据源。
 - 第三批 `ops_fp32_20260714-161522` 只作诊断资料，不作为正式或探索性 canonical 数据源。
 - 第一、第二、第三批不得合并为更多 repetitions，不得逐 case 择优，也不得拼接成正式或探索性结果。
-- 未来正式采集必须创建新的 `ops_fp32_<YYYYMMDD-HHMMSS>` 目录，完整重采全部 198 个主性能 case。四个算子都必须重新采集，不复用上述三个批次的数据。
+- 未来正式采集必须创建新的 `ops_fp32_<YYYYMMDD-HHMMSS>` 目录，按当前 dense 规格完整重采全部 2,712 个主性能 case。四个算子都必须重新采集，不复用上述三个批次的数据。
 - 未来正式采集每完成一个算子，立即检查该 binary 的进程级、系统级和 `pswpin` 门禁。未通过的原始输出保留为诊断并明确标记 invalid；修复环境后重新采集该算子，只有四个算子都通过门禁后，该新批次才能作为正式结果。
 
-### 当前探索性输出例外
+### 第三次批准的 sparse 探索性输出例外
 
 第三次补充批准允许直接使用 `ops_fp32_20260714-152755` 的既有 198 个 case 生成探索性 MD、SVG 和 summary，不要求为该输出重新运行 benchmark。此授权仅用于尽快观察已有测试的相对趋势，并遵守以下限制：
 
@@ -353,6 +392,16 @@ EXPLORATORY / NON-FORMAL
 数据来自正式失效的 ops_fp32_20260714-152755，环境受外部 Java/ZGC 和 CPU 争用干扰。
 结果仅供相对趋势观察，不可用于绝对性能、跨机器比较或性能回归结论。
 ```
+
+### 第四次批准的 dense 探索性运行
+
+用户当前消息已经批准实现并运行 113 点 dense sweep，不需要再次审核。该运行使用新的时间戳目录和新生成的 2,712 个 case，不从前三批补数，也不覆盖第三次批准生成的 sparse 探索报告。
+
+- 仍建议绑定 CPU 8/node 0，但本次明确不执行“可归因运行环境门禁”，不因外部 Java/ZGC、全局 swap、CPU 争用或 `CV > 5%` 停止 dense run。
+- `CV > 5%` 不重跑，只在表格、图和 summary 中标记 `UNSTABLE`；所有 scalar/AVX-512 speedup 和相对趋势必须附带两侧 CV/不稳定状态。
+- 本次不运行 `perf stat`，summary 固定记录 `perf stat: skipped in exploratory dense mode`。
+- 语义门禁不豁免：113 尺寸结构断言、新 contiguous correctness、case/curve 完整性和反汇编指令检查必须通过，否则测量对象可能与批准语义不同。
+- 所有 dense MD、SVG 和 summary 的标题或首屏必须标记 `EXPLORATORY / NON-FORMAL`，并声明环境可能受外部 Java/ZGC 和 CPU 争用干扰；不得用于绝对性能、跨机器、回归、容量、硬件上限或正式验收结论。
 
 ## 重复次数与统计口径
 
@@ -397,11 +446,13 @@ EXPLORATORY / NON-FORMAL
 
 事件按小组分开采集，避免过度 multiplex；每组使用 3 次重复并报告实际 `time enabled/time running`。不支持或无法授权的事件必须标记 unavailable，不得填 0。外部 `perf stat` 会包含少量进程设置开销，因此只作方向性诊断；代表 workload 应运行足够长，使设置开销相对可忽略，并在报告中保留这一限制。
 
-以上 `perf stat` 方案保留给未来正式采集。本次探索性输出不补跑 `perf stat`，summary 固定记录 `perf stat: skipped in exploratory mode`。
+以上 `perf stat` 方案保留给未来正式采集。第三次 sparse 探索输出不补跑 `perf stat`，summary 记录 `perf stat: skipped in exploratory mode`；第四次 dense run 同样不运行，记录 `perf stat: skipped in exploratory dense mode`。
 
 ## 正确性门禁
 
 所有性能 case 在正式采集前必须通过相同语义的非计时正确性检查。参考输入固定且可复现。阈值不能根据性能结果临时放宽。
+
+第四次 dense run 不对全部 113 个尺寸重复昂贵的 double correctness oracle。数值 correctness 继续覆盖现有 5 个 tail-only 尺寸和原 9 个 sparse 性能锚点；另行验证 113 尺寸表的数量、边界、顺序、唯一性、16 元素对齐、全部 2 次幂锚点及 `gcd(17,N)==1` 断言。Gather/Scatter correctness 必须在现有 correctness 尺寸上增加 contiguous kernel，并分别与 `out[i]=table[i]`、`dst[i]=src[i]` 参考结果做 FP32 bitwise 比较。反汇编门禁独立于数值准确性，第四次探索运行也必须执行。
 
 ### Reduce
 
@@ -470,6 +521,12 @@ gbench-test/results/ops_fp32_<YYYYMMDD-HHMMSS>/
 gbench-test/results/exploratory_ops_fp32_20260714-152755_<YYYYMMDD-HHMMSS>/
 ```
 
+第四次批准的 dense run 使用另一个全新目录，不得覆盖上述 sparse 探索目录、前三批原始目录或未来正式目录：
+
+```text
+gbench-test/results/exploratory_ops_fp32_dense_<YYYYMMDD-HHMMSS>/
+```
+
 `runtime-gates/` 保存四个正式 binary 的 warm/formal 标识、`time -v` 原始输出、进程 fault/context-switch 数据、1 Hz 系统采样、PSI、MemAvailable、CPU 竞争和 `pswpin/pswpout` 起止值。必要时可增加机器可读的 `environment.json` 和 `correctness.json`，但不得省略上述人类可读文件。`commands.log` 记录可重现的构建和运行命令，不记录密钥或无关环境变量。
 
 `summary.md` 至少包含：
@@ -485,41 +542,62 @@ gbench-test/results/exploratory_ops_fp32_20260714-152755_<YYYYMMDD-HHMMSS>/
 - unstable、失败、跳过和重跑 case 的完整列表。
 - logical bytes 与实测 DRAM bytes 的区别、外部 `perf stat` 设置开销等限制。
 
-探索性 summary 以“当前探索性输出例外”中的三行声明开头，并额外包含：外部 Java/ZGC 和 CPU 争用干扰、绝对性能/跨机器/回归禁用范围、每个 case 的 CV 与 `UNSTABLE` 标记、仅使用第一批的证明，以及 `perf stat: skipped in exploratory mode`。探索性 MD 和 SVG 也必须在标题或首屏显示 `EXPLORATORY / NON-FORMAL`，不能只依赖 summary 的说明。
+第三次批准的 sparse 探索性 summary 以对应例外中的三行声明开头，并额外包含：外部 Java/ZGC 和 CPU 争用干扰、绝对性能/跨机器/回归禁用范围、每个 case 的 CV 与 `UNSTABLE` 标记、仅使用第一批的证明，以及 `perf stat: skipped in exploratory mode`。探索性 MD 和 SVG 也必须在标题或首屏显示 `EXPLORATORY / NON-FORMAL`，不能只依赖 summary 的说明。
+
+第四次 dense 报告还必须满足：
+
+- 校验并报告 24 条曲线、每条 113 个 unique N、共 2,712 cases 和 18,984 raw repetition rows；缺失或重复时报告生成失败，不能静默画残缺曲线。
+- Gather/Scatter 主图使用 `N` 的 log2 x 轴，以便在相同 N 比较 `12N` indexed 和 `8N` contiguous；表格继续列出每条曲线的真实 working set 和 logical GB/s。需要时可另绘 working-set 图，但不能用错位的 working-set x 轴读取同 N 比值。
+- Gather/Scatter 以 pattern 区分颜色、implementation 区分线型；113 个普通点不逐点画 marker，只标全部 2 次幂锚点和 `CV > 5%` 的空心 `UNSTABLE` 点，避免 9 条曲线、1,017 个点互相遮挡。
+- scalar speedup 只配对同一 indexed variant 的 `scalar` 与 `avx512_vgather`/`avx512_vscatter`。contiguous 不显示“AVX speedup”；如报告其与 indexed SIMD 的比值，名称必须是 `contiguous/indexed-SIMD throughput ratio`，并注明它同时移除了 index 流且 logical bytes 为 `8N` 对 `12N`。
+- summary 记录整数尺寸公式、ID 映射、indexed sequential 强制 gather/scatter、contiguous 普通 load/store、反汇编证据、各算子实际耗时、不稳定 case 数，以及 `perf stat: skipped in exploratory dense mode`。
 
 ## 预计资源开销
 
-主矩阵共 198 个 case。按 7 repetitions 和每次至少 0.25 秒计算，纯计时理论下限约为：
+第四次 dense 主矩阵共 2,712 个 case。按 7 repetitions 和每次至少 0.25 秒计算，纯计时理论下限为：
 
 ```text
-198 * 7 * 0.25s = 346.5s，约 5.8 分钟
+Reduce:  452 * 7 * 0.25s =  791.00s，约 13.2 分钟
+Softmax: 226 * 7 * 0.25s =  395.50s，约  6.6 分钟
+Gather: 1017 * 7 * 0.25s = 1779.75s，约 29.7 分钟
+Scatter:1017 * 7 * 0.25s = 1779.75s，约 29.7 分钟
+Total:  2712 * 7 * 0.25s = 4746.00s，即 79 分 06 秒
 ```
 
-考虑 64M 数据初始化、确定性 shuffle、warmup、进程启动、统计和代表性 PMU 诊断，代码就绪后的完整采集预计 15-30 分钟；首次构建和完整正确性检查预计另需 5-15 分钟。系统负载或 unstable case 重跑会延长时间。
+79 分 06 秒只是 kernel min-time 下限，不是完成时间。large case 的一次迭代可能超过 0.25 秒，而且每个 repetition 会重新分配、填充并为随机 pattern 执行 Fisher-Yates shuffle；外部 Java/ZGC/CPU 争用还可能增加 wall time。本次 dense 探索运行预计 2-4 小时，极端情况下可能更久。不得为了缩时擅自减少 repetitions、降低 min-time，或把 `uniform_random` 换成计算式伪置换，否则会改变已经批准的曲线语义和可比性。
 
 64M FP32 或 `uint32_t` 数组各约 256 MiB。Scatter 完整参考校验以及 Softmax double 参考可能同时需要额外缓冲，计划峰值内存约 1-1.5 GiB。执行前必须检查可用内存和结果目录空间；不得依赖 swap 完成测试。
 
 ## 实施顺序
 
-### 当前探索性输出
+### 第三次批准的 sparse 探索性输出
 
 1. 确认第三次补充批准已记录，只读取 `ops_fp32_20260714-152755` 的既有 198 个 case。
 2. 在新的 `exploratory_ops_fp32_20260714-152755_<YYYYMMDD-HHMMSS>` 目录生成 MD、SVG 和 summary，不重新运行 benchmark 或 `perf stat`。
 3. 为所有产物加入 `EXPLORATORY / NON-FORMAL`、Java/ZGC/CPU 干扰和禁用范围声明；报告 CV，并将 `CV > 5%` 标为 `UNSTABLE`。
 4. 验证没有使用第二、第三批数据，没有覆盖任何正式或原始结果目录。
 
+### 第四次批准的 dense 探索性运行
+
+1. 当前用户消息即为执行批准；先更新实现和 `gbench-test/README.md`，无需再次请求审核。
+2. 用固定整数模板生成并断言 113 个尺寸，增加两个独立 contiguous runner/kernel、明确 implementation/pattern ID，并扩展现有 correctness。
+3. 构建后检查 indexed sequential 强制 `vgatherdps`/`vscatterdps`，contiguous 为普通 AVX-512 load/store 且没有 copy 库调用。
+4. 在新的 `exploratory_ops_fp32_dense_<YYYYMMDD-HHMMSS>` 目录按 7 repetitions、0.25 秒 min-time 运行全部 2,712 cases；不运行正式 runtime gate 或 `perf stat`，不中途因环境噪声/CV 停止。
+5. 生成适配 24 条 dense 曲线的 MD、SVG 和 summary，校验 18,984 raw repetition rows，标记所有 `CV > 5%` case 为 `UNSTABLE`，并保留醒目的非正式环境声明。
+6. 验证新目录没有覆盖 sparse 探索结果、前三批原始结果或未来正式目录。
+
 ### 未来正式采集
 
 1. 保留并执行本文“可归因运行环境门禁”，记录初始 git/submodule 状态和当前主机环境，确认 node 0 CPU 8 及其 SMT sibling CPU 200。
 2. 检查反汇编、计数公式、正确性、绑核、NUMA first-touch 和一个代表 case 的 smoke 结果。
-3. 新建正式时间戳目录；对每个 benchmark binary 先 warm，再以 `/usr/bin/time -v` 和 1 Hz 系统监控完整重采 198 个主性能 case，并在每个算子后立即检查运行环境门禁。
+3. 新建正式时间戳目录；对每个 benchmark binary 先 warm，再以 `/usr/bin/time -v` 和 1 Hz 系统监控按当前 dense 规格完整重采 2,712 个主性能 case，并在每个算子后立即检查运行环境门禁。
 4. 对通过门禁的正式结果分析 repetition 稳定性，并按原 CV 规则处理一次必要重跑。
 5. 对代表 AVX-512 case 运行分组 `perf stat` 诊断。
 6. 生成不覆盖历史结果的 JSON、Markdown、SVG、运行门禁日志和正式总览报告，由规划/审核方复核语义与结论。
 
 ## 失败与停止条件
 
-以下条件适用于未来正式采集，并继续完整保留。第三次补充批准只对本次探索性报告豁免已知 CPU 争用、swap/PSI 记录和 `CV > 5%` 重跑，不得据此把探索性结果改称正式结果。正式采集满足任一条件时按下述规则停止，不得用未记录的替代方案继续：
+以下条件适用于未来正式采集，并继续完整保留。第三、第四次补充批准只对各自的探索性报告/运行豁免已知 CPU 争用、swap/PSI 记录、`CV > 5%` 重跑和探索模式明确跳过的 `perf stat`，不得据此把探索性结果改称正式结果。第四次 dense run 仍必须通过尺寸结构、correctness、反汇编和 case 完整性语义门禁。正式采集满足任一条件时按下述规则停止，不得用未记录的替代方案继续：
 
 - 用户尚未再次明确批准：不得开始任何实现或执行。
 - scalar/AVX-512 反汇编不符合基线：停止相关算子，修正后重新做正确性。
@@ -536,7 +614,7 @@ gbench-test/results/exploratory_ops_fp32_20260714-152755_<YYYYMMDD-HHMMSS>/
 - 任一 1 Hz 样本 `procs_running > 4`、整机非 idle CPU 连续 5 秒高于 10%，或 CPU 8/200 存在竞争性任务：停止当前 binary。
 - 全局 `pswpin` 平均速率超过 `1 MiB/s`：停止当前 binary；速率未超限且其他硬门禁通过时，非零增量只记 advisory，不得单独判失败。
 - 出现 thermal/frequency 异常或内存不足：停止受影响的正式运行并保留诊断信息。
-- 第一、第二、第三批均不得升级为正式结果；未来正式批次未完整重采 198 个 case，或任一算子未通过上述门禁：不得发布正式性能结论。
+- 第一、第二、第三批及第四次 dense 探索结果均不得升级为正式结果；未来正式批次未按当前 dense 规格完整重采 2,712 个 case，或任一算子未通过上述门禁：不得发布正式性能结论。
 
 ## Dirty Worktree 保留原则
 

@@ -30,12 +30,24 @@ std::uint32_t FloatBits(float value) {
 }
 
 struct Reporter {
-  explicit Reporter(const std::string& path) : output(path) {
+  Reporter(const std::string& path, bool exploratory_dense) : output(path) {
+    if (exploratory_dense) {
+      output
+          << "# EXPLORATORY / NON-FORMAL - Dense FP32 correctness\n\n"
+          << "**This correctness gate supports a dense exploratory run whose "
+             "environment may be affected by external Java/ZGC activity and "
+             "CPU contention.**\n\n"
+          << "**Performance results are for relative trends only and cannot "
+             "support absolute, cross-machine, regression, capacity, hardware "
+             "limit, or formal acceptance conclusions.**\n\n";
+    }
     output << "# FP32 operations correctness\n\n"
            << "- Global seed: `20260714`\n"
-           << "- Sizes: tail-only 1, 7, 15, 17, 1003 plus all nine main "
-              "performance sizes\n"
-           << "- Status: generated before formal performance collection\n\n";
+           << "- Numerical oracle sizes: tail-only 1, 7, 15, 17, 1003 plus "
+              "the original nine sparse anchors\n"
+           << "- Dense performance sizes: 113 integer-generated lengths, "
+              "validated structurally without running 113 double oracles\n"
+           << "- Status: generated before performance collection\n\n";
   }
 
   void Failure(const std::string& message) {
@@ -46,6 +58,54 @@ struct Reporter {
   std::ofstream output;
   bool ok = true;
 };
+
+void CheckDenseSizeStructure(Reporter* reporter) {
+  const auto& sizes = ops::DenseSizes();
+  std::string validation_error;
+  const bool centralized = ops::ValidateDenseSizes(&validation_error);
+  const bool endpoints = sizes.front() == (1ULL << 10) &&
+                         sizes.back() == (1ULL << 26);
+  const bool increasing =
+      std::adjacent_find(sizes.begin(), sizes.end(),
+                         [](std::size_t left, std::size_t right) {
+                           return left >= right;
+                         }) == sizes.end();
+  const bool aligned = std::all_of(sizes.begin(), sizes.end(),
+                                   [](std::size_t n) { return n % 16 == 0; });
+  const bool coprime = std::all_of(
+      sizes.begin(), sizes.end(),
+      [](std::size_t n) { return std::gcd<std::size_t>(17, n) == 1; });
+  bool anchors = true;
+  for (int power = 10; power <= 26; ++power) {
+    anchors = anchors &&
+              std::binary_search(sizes.begin(), sizes.end(), 1ULL << power);
+  }
+  const bool pass = centralized && sizes.size() == 113 && endpoints &&
+                    increasing && aligned && coprime && anchors;
+
+  reporter->output
+      << "## Dense size structure\n\n"
+      << "Integer formula: `base={1024,1136,1248,1376,1520,1680,1856}` "
+         "shifted by octaves 0..15, followed by 64M.\n\n"
+      << "| Assertion | Observed | Status |\n"
+      << "| --- | --- | --- |\n"
+      << "| Count | " << sizes.size() << " | "
+      << (sizes.size() == 113 ? "PASS" : "FAIL") << " |\n"
+      << "| Endpoints | " << sizes.front() << " .. " << sizes.back() << " | "
+      << (endpoints ? "PASS" : "FAIL") << " |\n"
+      << "| Strict order and uniqueness | " << (increasing ? "yes" : "no")
+      << " | " << (increasing ? "PASS" : "FAIL") << " |\n"
+      << "| Every N is 16-element aligned | " << (aligned ? "yes" : "no")
+      << " | " << (aligned ? "PASS" : "FAIL") << " |\n"
+      << "| All power-of-two anchors 1K..64M | "
+      << (anchors ? "present" : "missing") << " | "
+      << (anchors ? "PASS" : "FAIL") << " |\n"
+      << "| Every N is coprime with 17 | " << (coprime ? "yes" : "no")
+      << " | " << (coprime ? "PASS" : "FAIL") << " |\n\n";
+  if (!pass) {
+    reporter->Failure("dense size structure: " + validation_error);
+  }
+}
 
 void CheckReduce(Reporter* reporter) {
   reporter->output
@@ -152,7 +212,7 @@ void CheckSoftmax(Reporter* reporter) {
 
 void CheckGather(Reporter* reporter) {
   reporter->output << "## Gather\n\n"
-                   << "| N | Pattern | Permutation | Scalar | AVX-512 |\n"
+                   << "| N | Pattern | Permutation | Scalar | AVX-512 vgather |\n"
                    << "| ---: | --- | --- | --- | --- |\n";
   for (const std::size_t n : kSizes) {
     ops::FloatBuffer table(n), reference(n), output(n);
@@ -175,7 +235,7 @@ void CheckGather(Reporter* reporter) {
       }
       bool implementation_ok[2] = {true, true};
       for (int implementation = 0; implementation < 2; ++implementation) {
-        (implementation ? ops::gather_avx512 : ops::gather_scalar)(
+        (implementation ? ops::gather_avx512_vgather : ops::gather_scalar)(
             table.data(), index.data(), output.data(), n);
         for (std::size_t i = 0; i < n; ++i) {
           if (FloatBits(output.data()[i]) != FloatBits(reference.data()[i])) {
@@ -200,9 +260,35 @@ void CheckGather(Reporter* reporter) {
   reporter->output << "\nOutputs require FP32 bitwise equality.\n\n";
 }
 
+void CheckGatherContiguous(Reporter* reporter) {
+  reporter->output << "## Gather contiguous load/store\n\n"
+                   << "| N | AVX-512 load/store |\n"
+                   << "| ---: | --- |\n";
+  for (const std::size_t n : kSizes) {
+    ops::FloatBuffer table(n), output(n);
+    ops::FillInput(table.data(), n, ops::DeriveSeed("gather", "table", n));
+    ops::gather_avx512_load_store(table.data(), output.data(), n);
+    bool pass = true;
+    for (std::size_t i = 0; i < n; ++i) {
+      if (FloatBits(output.data()[i]) != FloatBits(table.data()[i])) {
+        pass = false;
+        break;
+      }
+    }
+    reporter->output << "| " << n << " | " << (pass ? "PASS" : "FAIL")
+                     << " |\n";
+    if (!pass) {
+      reporter->Failure("gather contiguous correctness at N=" +
+                        std::to_string(n));
+    }
+  }
+  reporter->output << "\nOutputs require FP32 bitwise equality with "
+                      "`out[i] = table[i]`.\n\n";
+}
+
 void CheckScatter(Reporter* reporter) {
   reporter->output << "## Scatter\n\n"
-                   << "| N | Pattern | Permutation | Scalar | AVX-512 |\n"
+                   << "| N | Pattern | Permutation | Scalar | AVX-512 vscatter |\n"
                    << "| ---: | --- | --- | --- | --- |\n";
   for (const std::size_t n : kSizes) {
     ops::FloatBuffer source(n), reference(n), output(n);
@@ -228,7 +314,7 @@ void CheckScatter(Reporter* reporter) {
       bool implementation_ok[2] = {true, true};
       for (int implementation = 0; implementation < 2; ++implementation) {
         ops::FillSentinel(output.data(), n);
-        (implementation ? ops::scatter_avx512 : ops::scatter_scalar)(
+        (implementation ? ops::scatter_avx512_vscatter : ops::scatter_scalar)(
             source.data(), index.data(), output.data(), n);
         for (std::size_t i = 0; i < n; ++i) {
           if (FloatBits(output.data()[i]) != FloatBits(reference.data()[i])) {
@@ -254,21 +340,59 @@ void CheckScatter(Reporter* reporter) {
                       "equality after sentinel initialization.\n\n";
 }
 
+void CheckScatterContiguous(Reporter* reporter) {
+  reporter->output << "## Scatter contiguous load/store\n\n"
+                   << "| N | AVX-512 load/store |\n"
+                   << "| ---: | --- |\n";
+  for (const std::size_t n : kSizes) {
+    ops::FloatBuffer source(n), output(n);
+    ops::FillInput(source.data(), n,
+                   ops::DeriveSeed("scatter", "source", n));
+    ops::FillSentinel(output.data(), n);
+    ops::scatter_avx512_load_store(source.data(), output.data(), n);
+    bool pass = true;
+    for (std::size_t i = 0; i < n; ++i) {
+      if (FloatBits(output.data()[i]) != FloatBits(source.data()[i])) {
+        pass = false;
+        break;
+      }
+    }
+    reporter->output << "| " << n << " | " << (pass ? "PASS" : "FAIL")
+                     << " |\n";
+    if (!pass) {
+      reporter->Failure("scatter contiguous correctness at N=" +
+                        std::to_string(n));
+    }
+  }
+  reporter->output << "\nFull outputs require FP32 bitwise equality with "
+                      "`dst[i] = src[i]`.\n\n";
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
-  if (argc != 2) {
-    std::cerr << "usage: ops_correctness <output.md>\n";
+  if (argc != 2 && argc != 3) {
+    std::cerr << "usage: ops_correctness <output.md> "
+                 "[--dense-exploratory]\n";
     return 2;
   }
-  Reporter reporter(argv[1]);
+  const bool exploratory_dense =
+      argc == 3 && std::string(argv[2]) == "--dense-exploratory";
+  if (argc == 3 && !exploratory_dense) {
+    std::cerr << "unknown mode: " << argv[2] << "\n";
+    return 2;
+  }
+  Reporter reporter(argv[1], exploratory_dense);
   if (!reporter.output) {
     std::cerr << "cannot open output: " << argv[1] << "\n";
     return 2;
   }
+  CheckDenseSizeStructure(&reporter);
   CheckReduce(&reporter);
   CheckGather(&reporter);
+  CheckGatherContiguous(&reporter);
   CheckScatter(&reporter);
+  CheckScatterContiguous(&reporter);
   CheckSoftmax(&reporter);
   reporter.output << "## Final status\n\n**"
                   << (reporter.ok ? "PASS" : "FAIL") << "**\n";

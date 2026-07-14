@@ -27,9 +27,46 @@ namespace {
 #define OPS_SCALAR
 #endif
 
-constexpr std::array<std::size_t, 9> kMainSizes = {
-    1ULL << 10, 1ULL << 12, 1ULL << 14, 1ULL << 16, 1ULL << 18,
-    1ULL << 20, 1ULL << 22, 1ULL << 24, 1ULL << 26};
+#if defined(__GNUC__) && !defined(__clang__)
+#define OPS_LOAD_STORE                                                     \
+  __attribute__((noinline, noipa, optimize("no-tree-loop-distribute-patterns")))
+#else
+#define OPS_LOAD_STORE OPS_NOINLINE
+#endif
+
+constexpr std::array<std::size_t, 7> kDenseBases = {
+    1024, 1136, 1248, 1376, 1520, 1680, 1856};
+
+bool ValidateDenseSizeArray(const DenseSizeArray& sizes, std::string* error) {
+  const auto fail = [error](const std::string& message) {
+    if (error != nullptr) {
+      *error = message;
+    }
+    return false;
+  };
+  if (sizes.front() != (1ULL << 10) || sizes.back() != (1ULL << 26)) {
+    return fail("dense size endpoints are not 1K and 64M");
+  }
+  for (std::size_t i = 0; i < sizes.size(); ++i) {
+    const std::size_t n = sizes[i];
+    if (i != 0 && sizes[i - 1] >= n) {
+      return fail("dense sizes are not strictly increasing");
+    }
+    if (n % 16 != 0) {
+      return fail("dense size is not a multiple of 16: " + std::to_string(n));
+    }
+    if (std::gcd<std::size_t>(17, n) != 1) {
+      return fail("dense size is not coprime with 17: " + std::to_string(n));
+    }
+  }
+  for (int power = 10; power <= 26; ++power) {
+    const std::size_t anchor = 1ULL << power;
+    if (!std::binary_search(sizes.begin(), sizes.end(), anchor)) {
+      return fail("missing power-of-two anchor: " + std::to_string(anchor));
+    }
+  }
+  return true;
+}
 
 class StableRng {
  public:
@@ -138,8 +175,36 @@ const char* PatternName(Pattern pattern) {
       return "block_random_4k";
     case Pattern::kUniformRandom:
       return "uniform_random";
+    case Pattern::kContiguous:
+      return "contiguous";
   }
   return "unknown";
+}
+
+const DenseSizeArray& DenseSizes() {
+  static const DenseSizeArray sizes = [] {
+    DenseSizeArray generated{};
+    std::size_t index = 0;
+    for (int octave = 0; octave <= 15; ++octave) {
+      for (const std::size_t base : kDenseBases) {
+        generated[index++] = base << octave;
+      }
+    }
+    generated[index++] = 1ULL << 26;
+    if (index != generated.size()) {
+      throw std::logic_error("dense size generator produced wrong count");
+    }
+    std::string error;
+    if (!ValidateDenseSizeArray(generated, &error)) {
+      throw std::logic_error("invalid dense size table: " + error);
+    }
+    return generated;
+  }();
+  return sizes;
+}
+
+bool ValidateDenseSizes(std::string* error) {
+  return ValidateDenseSizeArray(DenseSizes(), error);
 }
 
 int InnerPasses(std::size_t elements) {
@@ -203,6 +268,9 @@ void BuildIndices(std::uint32_t* index, std::size_t n, Pattern pattern,
       index[i] = static_cast<std::uint32_t>((17ULL * i) % n);
     }
     return;
+  }
+  if (pattern == Pattern::kContiguous) {
+    throw std::invalid_argument("contiguous path must not construct indices");
   }
   StableRng rng(seed);
   if (pattern == Pattern::kBlockRandom4k) {
@@ -317,9 +385,9 @@ extern "C" OPS_SCALAR void gather_scalar(const float* table,
   }
 }
 
-extern "C" OPS_NOINLINE void gather_avx512(const float* table,
-                                             const std::uint32_t* index,
-                                             float* out, std::size_t n) {
+extern "C" OPS_NOINLINE void gather_avx512_vgather(
+    const float* table, const std::uint32_t* index, float* out,
+    std::size_t n) {
   std::size_t i = 0;
   for (; i + 16 <= n; i += 16) {
     const __m512i indices = _mm512_loadu_si512(index + i);
@@ -334,6 +402,20 @@ extern "C" OPS_NOINLINE void gather_avx512(const float* table,
   }
 }
 
+extern "C" OPS_LOAD_STORE void gather_avx512_load_store(const float* table,
+                                                          float* out,
+                                                          std::size_t n) {
+  std::size_t i = 0;
+  for (; i + 16 <= n; i += 16) {
+    _mm512_storeu_ps(out + i, _mm512_loadu_ps(table + i));
+  }
+  if (i < n) {
+    const __mmask16 mask = static_cast<__mmask16>((1U << (n - i)) - 1U);
+    _mm512_mask_storeu_ps(out + i, mask,
+                          _mm512_maskz_loadu_ps(mask, table + i));
+  }
+}
+
 extern "C" OPS_SCALAR void scatter_scalar(const float* src,
                                             const std::uint32_t* index,
                                             float* dst, std::size_t n) {
@@ -342,9 +424,8 @@ extern "C" OPS_SCALAR void scatter_scalar(const float* src,
   }
 }
 
-extern "C" OPS_NOINLINE void scatter_avx512(const float* src,
-                                              const std::uint32_t* index,
-                                              float* dst, std::size_t n) {
+extern "C" OPS_NOINLINE void scatter_avx512_vscatter(
+    const float* src, const std::uint32_t* index, float* dst, std::size_t n) {
   std::size_t i = 0;
   for (; i + 16 <= n; i += 16) {
     const __m512i indices = _mm512_loadu_si512(index + i);
@@ -356,6 +437,20 @@ extern "C" OPS_NOINLINE void scatter_avx512(const float* src,
     const __m512i indices = _mm512_maskz_loadu_epi32(mask, index + i);
     const __m512 values = _mm512_maskz_loadu_ps(mask, src + i);
     _mm512_mask_i32scatter_ps(dst, mask, indices, values, 4);
+  }
+}
+
+extern "C" OPS_LOAD_STORE void scatter_avx512_load_store(const float* src,
+                                                           float* dst,
+                                                           std::size_t n) {
+  std::size_t i = 0;
+  for (; i + 16 <= n; i += 16) {
+    _mm512_storeu_ps(dst + i, _mm512_loadu_ps(src + i));
+  }
+  if (i < n) {
+    const __mmask16 mask = static_cast<__mmask16>((1U << (n - i)) - 1U);
+    _mm512_mask_storeu_ps(dst + i, mask,
+                          _mm512_maskz_loadu_ps(mask, src + i));
   }
 }
 
@@ -485,14 +580,14 @@ void RunGatherBenchmark(benchmark::State& state, bool use_avx512,
   FillInput(table.data(), n, DeriveSeed("gather", "table", n));
   BuildIndices(index.data(), n, pattern,
                DeriveSeed("gather", PatternName(pattern), n));
-  (use_avx512 ? gather_avx512 : gather_scalar)(table.data(), index.data(),
-                                               output.data(), n);
+  (use_avx512 ? gather_avx512_vgather : gather_scalar)(
+      table.data(), index.data(), output.data(), n);
   benchmark::DoNotOptimize(output.data());
   std::uint64_t cycles = 0;
   if (!Measure(state,
                [&] {
                  for (int pass = 0; pass < passes; ++pass) {
-                   (use_avx512 ? gather_avx512 : gather_scalar)(
+                   (use_avx512 ? gather_avx512_vgather : gather_scalar)(
                        table.data(), index.data(), output.data(), n);
                  }
                  benchmark::DoNotOptimize(output.data());
@@ -505,6 +600,29 @@ void RunGatherBenchmark(benchmark::State& state, bool use_avx512,
                     use_avx512 ? 1 : 0, static_cast<int>(pattern));
 }
 
+void RunGatherContiguousBenchmark(benchmark::State& state) {
+  const std::size_t n = static_cast<std::size_t>(state.range(0));
+  const int passes = InnerPasses(n);
+  FloatBuffer table(n), output(n);
+  FillInput(table.data(), n, DeriveSeed("gather", "table", n));
+  gather_avx512_load_store(table.data(), output.data(), n);
+  benchmark::DoNotOptimize(output.data());
+  std::uint64_t cycles = 0;
+  if (!Measure(state,
+               [&] {
+                 for (int pass = 0; pass < passes; ++pass) {
+                   gather_avx512_load_store(table.data(), output.data(), n);
+                 }
+                 benchmark::DoNotOptimize(output.data());
+                 benchmark::ClobberMemory();
+               },
+               &cycles)) {
+    return;
+  }
+  SetCommonCounters(state, n, passes, 8LL * n, 8LL * n, cycles, 2,
+                    static_cast<int>(Pattern::kContiguous));
+}
+
 void RunScatterBenchmark(benchmark::State& state, bool use_avx512,
                          Pattern pattern) {
   const std::size_t n = static_cast<std::size_t>(state.range(0));
@@ -515,14 +633,14 @@ void RunScatterBenchmark(benchmark::State& state, bool use_avx512,
   FillSentinel(destination.data(), n);
   BuildIndices(index.data(), n, pattern,
                DeriveSeed("scatter", PatternName(pattern), n));
-  (use_avx512 ? scatter_avx512 : scatter_scalar)(
+  (use_avx512 ? scatter_avx512_vscatter : scatter_scalar)(
       source.data(), index.data(), destination.data(), n);
   benchmark::DoNotOptimize(destination.data());
   std::uint64_t cycles = 0;
   if (!Measure(state,
                [&] {
                  for (int pass = 0; pass < passes; ++pass) {
-                   (use_avx512 ? scatter_avx512 : scatter_scalar)(
+                   (use_avx512 ? scatter_avx512_vscatter : scatter_scalar)(
                        source.data(), index.data(), destination.data(), n);
                  }
                  benchmark::DoNotOptimize(destination.data());
@@ -533,6 +651,31 @@ void RunScatterBenchmark(benchmark::State& state, bool use_avx512,
   }
   SetCommonCounters(state, n, passes, 12LL * n, 12LL * n, cycles,
                     use_avx512 ? 1 : 0, static_cast<int>(pattern));
+}
+
+void RunScatterContiguousBenchmark(benchmark::State& state) {
+  const std::size_t n = static_cast<std::size_t>(state.range(0));
+  const int passes = InnerPasses(n);
+  FloatBuffer source(n), destination(n);
+  FillInput(source.data(), n, DeriveSeed("scatter", "source", n));
+  FillSentinel(destination.data(), n);
+  scatter_avx512_load_store(source.data(), destination.data(), n);
+  benchmark::DoNotOptimize(destination.data());
+  std::uint64_t cycles = 0;
+  if (!Measure(state,
+               [&] {
+                 for (int pass = 0; pass < passes; ++pass) {
+                   scatter_avx512_load_store(source.data(), destination.data(),
+                                             n);
+                 }
+                 benchmark::DoNotOptimize(destination.data());
+                 benchmark::ClobberMemory();
+               },
+               &cycles)) {
+    return;
+  }
+  SetCommonCounters(state, n, passes, 8LL * n, 8LL * n, cycles, 2,
+                    static_cast<int>(Pattern::kContiguous));
 }
 
 void RunSoftmaxBenchmark(benchmark::State& state, bool use_avx512) {
@@ -563,7 +706,7 @@ void RunSoftmaxBenchmark(benchmark::State& state, bool use_avx512) {
 void RegisterReduceBenchmarks() {
   for (const bool use_avx512 : {false, true}) {
     for (const bool reduce_max : {false, true}) {
-      for (const std::size_t n : kMainSizes) {
+      for (const std::size_t n : DenseSizes()) {
         const std::string name = std::string("reduce/") +
                                  (reduce_max ? "max/" : "sum/") +
                                  (use_avx512 ? "avx512/" : "scalar/") +
@@ -581,15 +724,22 @@ void RegisterGatherBenchmarks() {
     for (const Pattern pattern : {Pattern::kSequential, Pattern::kStride17,
                                   Pattern::kBlockRandom4k,
                                   Pattern::kUniformRandom}) {
-      for (const std::size_t n : kMainSizes) {
+      for (const std::size_t n : DenseSizes()) {
         const std::string name = std::string("gather/") + PatternName(pattern) +
-                                 "/" + (use_avx512 ? "avx512/" : "scalar/") +
+                                 "/" +
+                                 (use_avx512 ? "avx512_vgather/" : "scalar/") +
                                  std::to_string(n);
         benchmark::RegisterBenchmark(name.c_str(), RunGatherBenchmark,
                                      use_avx512, pattern)
             ->Arg(static_cast<std::int64_t>(n));
       }
     }
+  }
+  for (const std::size_t n : DenseSizes()) {
+    const std::string name = "gather/contiguous/avx512_load_store/" +
+                             std::to_string(n);
+    benchmark::RegisterBenchmark(name.c_str(), RunGatherContiguousBenchmark)
+        ->Arg(static_cast<std::int64_t>(n));
   }
 }
 
@@ -598,9 +748,10 @@ void RegisterScatterBenchmarks() {
     for (const Pattern pattern : {Pattern::kSequential, Pattern::kStride17,
                                   Pattern::kBlockRandom4k,
                                   Pattern::kUniformRandom}) {
-      for (const std::size_t n : kMainSizes) {
+      for (const std::size_t n : DenseSizes()) {
         const std::string name = std::string("scatter/") + PatternName(pattern) +
-                                 "/" + (use_avx512 ? "avx512/" : "scalar/") +
+                                 "/" +
+                                 (use_avx512 ? "avx512_vscatter/" : "scalar/") +
                                  std::to_string(n);
         benchmark::RegisterBenchmark(name.c_str(), RunScatterBenchmark,
                                      use_avx512, pattern)
@@ -608,11 +759,17 @@ void RegisterScatterBenchmarks() {
       }
     }
   }
+  for (const std::size_t n : DenseSizes()) {
+    const std::string name = "scatter/contiguous/avx512_load_store/" +
+                             std::to_string(n);
+    benchmark::RegisterBenchmark(name.c_str(), RunScatterContiguousBenchmark)
+        ->Arg(static_cast<std::int64_t>(n));
+  }
 }
 
 void RegisterSoftmaxBenchmarks() {
   for (const bool use_avx512 : {false, true}) {
-    for (const std::size_t n : kMainSizes) {
+    for (const std::size_t n : DenseSizes()) {
       const std::string name = std::string("softmax/") +
                                (use_avx512 ? "avx512/" : "scalar/") +
                                std::to_string(n);

@@ -1,5 +1,6 @@
 # Build outputs
 build/
+gbench-test/build-*/
 cmake-build-*/
 out/
 bin/

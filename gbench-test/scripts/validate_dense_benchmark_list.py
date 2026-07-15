@@ -13,6 +13,7 @@ EXPECTED_CASES = {
     "gather": 1017,
     "scatter": 1017,
     "softmax": 226,
+    "fma": 226,
 }
 
 
@@ -65,7 +66,7 @@ def main():
         total_curves += curves
         total_cases += cases
         print(f"{operation}: {curves} curves x 113 sizes = {cases} cases")
-    if total_curves != 24 or total_cases != 2712:
+    if total_curves != 26 or total_cases != 2938:
         raise SystemExit(f"total mismatch: {total_curves} curves, {total_cases} cases")
     print(f"total: {total_curves} curves, {total_cases} cases")
 

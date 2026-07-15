@@ -53,6 +53,7 @@ def main():
     gather_binary = build_dir / "gather_fp32_bench"
     scatter_binary = build_dir / "scatter_fp32_bench"
     softmax_binary = build_dir / "softmax_fp32_bench"
+    fma_binary = build_dir / "fma_fp32_bench"
 
     bodies = {
         "gather_avx512_vgather": disassemble(gather_binary, "gather_avx512_vgather"),
@@ -67,6 +68,8 @@ def main():
         "reduce_sum_avx512": disassemble(softmax_binary, "reduce_sum_avx512"),
         "reduce_max_avx512": disassemble(softmax_binary, "reduce_max_avx512"),
         "softmax_avx512": disassemble(softmax_binary, "softmax_avx512"),
+        "fma_reuse_avx512": disassemble(fma_binary, "fma_reuse_avx512"),
+        "fma_once_avx512": disassemble(fma_binary, "fma_once_avx512"),
     }
 
     require(bodies["gather_avx512_vgather"], r"\bvgatherdps\b", "vgatherdps")
@@ -97,6 +100,11 @@ def main():
     require(bodies["reduce_max_avx512"], r"\bvmaxps\b.*%zmm", "packed AVX-512 max")
     require(bodies["softmax_avx512"], r"Sleef_expf16_u10avx512f", "SLEEF AVX-512 u10 call")
 
+    fma_pattern = r"\bvfmadd(?:132|213|231)ps\b"
+    if len(matching_instructions(bodies["fma_reuse_avx512"], fma_pattern)) < 16:
+        raise ValueError("fma_reuse_avx512: insufficient AVX-512 FMA instructions")
+    require(bodies["fma_once_avx512"], fma_pattern, "AVX-512 FMA in once kernel")
+
     lines = []
     if args.dense_exploratory:
         lines.extend(
@@ -120,6 +128,7 @@ def main():
             "| Contiguous Gather/Scatter | explicit ZMM `vmovups`, masked tail | gather/scatter, `call`/library copy | PASS |",
             "| Scalar timed math bodies | scalar `ss` arithmetic | packed arithmetic, YMM, gather/scatter | PASS |",
             "| AVX-512 Reduce/Softmax | packed ZMM math, SLEEF `expf16_u10` | missing vector body | PASS |",
+            "| FMA reuse/once | AVX-512 `vfmadd*ps` | missing FMA body | PASS |",
             "",
             "ZMM stores used only to clear scalar accumulator arrays on the stack are not vectorized timed math and were checked separately.",
             "",
@@ -132,6 +141,8 @@ def main():
         ("scatter_avx512_vscatter", r"vscatterdps"),
         ("gather_avx512_load_store", r"vmovups.*(?:%zmm|\{%k)"),
         ("scatter_avx512_load_store", r"vmovups.*(?:%zmm|\{%k)"),
+        ("fma_reuse_avx512", r"vfmadd(?:132|213|231)ps"),
+        ("fma_once_avx512", r"vfmadd(?:132|213|231)ps"),
     ):
         lines.extend([f"### `{symbol}`", "", "```text"])
         lines.extend(matching_instructions(bodies[symbol], pattern)[:4])

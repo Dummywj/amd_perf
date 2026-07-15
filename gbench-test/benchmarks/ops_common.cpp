@@ -131,6 +131,40 @@ void SetCommonCounters(benchmark::State& state, std::size_t n,
   state.counters["warmup_calls"] = 1.0;
 }
 
+void SetFmaCounters(benchmark::State& state, std::size_t n,
+                    std::int64_t inner_passes, std::int64_t fma_rounds,
+                    std::int64_t working_set, std::int64_t logical_bytes,
+                    std::uint64_t core_cycles, int pattern_id) {
+  const auto fma_elements = state.iterations() * inner_passes *
+                            static_cast<std::int64_t>(n) * fma_rounds;
+  const auto logical_total = state.iterations() * inner_passes * logical_bytes;
+  state.SetItemsProcessed(fma_elements);
+  state.SetBytesProcessed(logical_total);
+  state.counters["elements"] = static_cast<double>(n);
+  state.counters["fma_rounds"] = static_cast<double>(fma_rounds);
+  state.counters["working_set_bytes"] = static_cast<double>(working_set);
+  state.counters["inner_passes"] = static_cast<double>(inner_passes);
+  state.counters["logical_bytes"] = static_cast<double>(logical_bytes);
+  state.counters["core_cycles"] = static_cast<double>(core_cycles);
+  state.counters["elem/core_cycle"] =
+      static_cast<double>(fma_elements) / static_cast<double>(core_cycles);
+  state.counters["fma_instr/core_cycle"] =
+      static_cast<double>(fma_elements) / 16.0 /
+      static_cast<double>(core_cycles);
+  state.counters["flop/core_cycle"] =
+      2.0 * static_cast<double>(fma_elements) /
+      static_cast<double>(core_cycles);
+  state.counters["implementation_id"] = 1;
+  state.counters["pattern_id"] = pattern_id;
+  state.counters["warmup_calls"] = 1.0;
+}
+
+int FmaInnerPasses(std::size_t n, int fma_rounds) {
+  const auto operations = static_cast<std::int64_t>(n) * fma_rounds;
+  return static_cast<int>(std::max<std::int64_t>(
+      1, (kMinElementsPerIteration + operations - 1) / operations));
+}
+
 template <typename Callback>
 bool Measure(benchmark::State& state, Callback callback,
              std::uint64_t* core_cycles) {
@@ -454,6 +488,123 @@ extern "C" OPS_LOAD_STORE void scatter_avx512_load_store(const float* src,
   }
 }
 
+#define FMA_REUSE_LOAD(index)                                                \
+  __m512 acc##index = _mm512_loadu_ps(data + i + (index) * 16)
+#define FMA_REUSE_STEP(index) acc##index = _mm512_fmadd_ps(acc##index, mul, add)
+#define FMA_REUSE_STORE(index)                                               \
+  _mm512_storeu_ps(data + i + (index) * 16, acc##index)
+#define FMA_REUSE_ALL()                                                      \
+  do {                                                                       \
+    FMA_REUSE_STEP(0);                                                       \
+    FMA_REUSE_STEP(1);                                                       \
+    FMA_REUSE_STEP(2);                                                       \
+    FMA_REUSE_STEP(3);                                                       \
+    FMA_REUSE_STEP(4);                                                       \
+    FMA_REUSE_STEP(5);                                                       \
+    FMA_REUSE_STEP(6);                                                       \
+    FMA_REUSE_STEP(7);                                                       \
+    FMA_REUSE_STEP(8);                                                       \
+    FMA_REUSE_STEP(9);                                                       \
+    FMA_REUSE_STEP(10);                                                      \
+    FMA_REUSE_STEP(11);                                                      \
+    FMA_REUSE_STEP(12);                                                      \
+    FMA_REUSE_STEP(13);                                                      \
+    FMA_REUSE_STEP(14);                                                      \
+    FMA_REUSE_STEP(15);                                                      \
+  } while (0)
+
+extern "C" OPS_NOINLINE void fma_reuse_avx512(float* data, std::size_t n) {
+  constexpr std::size_t kBlockElements = 16 * 16;
+  const __m512 mul = _mm512_set1_ps(0.99999994f);
+  const __m512 add = _mm512_set1_ps(0.000001f);
+  std::size_t i = 0;
+  for (; i + kBlockElements <= n; i += kBlockElements) {
+    FMA_REUSE_LOAD(0);
+    FMA_REUSE_LOAD(1);
+    FMA_REUSE_LOAD(2);
+    FMA_REUSE_LOAD(3);
+    FMA_REUSE_LOAD(4);
+    FMA_REUSE_LOAD(5);
+    FMA_REUSE_LOAD(6);
+    FMA_REUSE_LOAD(7);
+    FMA_REUSE_LOAD(8);
+    FMA_REUSE_LOAD(9);
+    FMA_REUSE_LOAD(10);
+    FMA_REUSE_LOAD(11);
+    FMA_REUSE_LOAD(12);
+    FMA_REUSE_LOAD(13);
+    FMA_REUSE_LOAD(14);
+    FMA_REUSE_LOAD(15);
+    for (int round = 0; round < kFmaReuseRounds; ++round) {
+      FMA_REUSE_ALL();
+    }
+    FMA_REUSE_STORE(0);
+    FMA_REUSE_STORE(1);
+    FMA_REUSE_STORE(2);
+    FMA_REUSE_STORE(3);
+    FMA_REUSE_STORE(4);
+    FMA_REUSE_STORE(5);
+    FMA_REUSE_STORE(6);
+    FMA_REUSE_STORE(7);
+    FMA_REUSE_STORE(8);
+    FMA_REUSE_STORE(9);
+    FMA_REUSE_STORE(10);
+    FMA_REUSE_STORE(11);
+    FMA_REUSE_STORE(12);
+    FMA_REUSE_STORE(13);
+    FMA_REUSE_STORE(14);
+    FMA_REUSE_STORE(15);
+  }
+  for (; i + 16 <= n; i += 16) {
+    __m512 value = _mm512_loadu_ps(data + i);
+    for (int round = 0; round < kFmaReuseRounds; ++round) {
+      value = _mm512_fmadd_ps(value, mul, add);
+    }
+    _mm512_storeu_ps(data + i, value);
+  }
+  if (i < n) {
+    const __mmask16 mask = static_cast<__mmask16>((1U << (n - i)) - 1U);
+    __m512 value = _mm512_maskz_loadu_ps(mask, data + i);
+    for (int round = 0; round < kFmaReuseRounds; ++round) {
+      value = _mm512_fmadd_ps(value, mul, add);
+    }
+    _mm512_mask_storeu_ps(data + i, mask, value);
+  }
+}
+
+#undef FMA_REUSE_LOAD
+#undef FMA_REUSE_STEP
+#undef FMA_REUSE_STORE
+#undef FMA_REUSE_ALL
+
+extern "C" OPS_NOINLINE void fma_once_avx512(
+    const float* a, const float* b, const float* c, float* output,
+    std::size_t n) {
+  constexpr std::size_t kBlockElements = 64;
+  std::size_t i = 0;
+  for (; i + kBlockElements <= n; i += kBlockElements) {
+    for (std::size_t offset = 0; offset < kBlockElements; offset += 16) {
+      const __m512 av = _mm512_loadu_ps(a + i + offset);
+      const __m512 bv = _mm512_loadu_ps(b + i + offset);
+      const __m512 cv = _mm512_loadu_ps(c + i + offset);
+      _mm512_storeu_ps(output + i + offset, _mm512_fmadd_ps(av, bv, cv));
+    }
+  }
+  for (; i + 16 <= n; i += 16) {
+    const __m512 av = _mm512_loadu_ps(a + i);
+    const __m512 bv = _mm512_loadu_ps(b + i);
+    const __m512 cv = _mm512_loadu_ps(c + i);
+    _mm512_storeu_ps(output + i, _mm512_fmadd_ps(av, bv, cv));
+  }
+  if (i < n) {
+    const __mmask16 mask = static_cast<__mmask16>((1U << (n - i)) - 1U);
+    const __m512 av = _mm512_maskz_loadu_ps(mask, a + i);
+    const __m512 bv = _mm512_maskz_loadu_ps(mask, b + i);
+    const __m512 cv = _mm512_maskz_loadu_ps(mask, c + i);
+    _mm512_mask_storeu_ps(output + i, mask, _mm512_fmadd_ps(av, bv, cv));
+  }
+}
+
 extern "C" OPS_SCALAR void softmax_scalar(const float* input, float* output,
                                             std::size_t n) {
   const float maximum = reduce_max_scalar(input, n);
@@ -703,6 +854,52 @@ void RunSoftmaxBenchmark(benchmark::State& state, bool use_avx512) {
                     use_avx512 ? 1 : 0, -1);
 }
 
+void RunFmaBenchmark(benchmark::State& state, bool reuse) {
+  const std::size_t n = static_cast<std::size_t>(state.range(0));
+  const int rounds = reuse ? kFmaReuseRounds : 1;
+  const int passes = FmaInnerPasses(n, rounds);
+  std::uint64_t cycles = 0;
+  if (reuse) {
+    FloatBuffer data(n);
+    FillInput(data.data(), n, DeriveSeed("fma", "reuse", n));
+    fma_reuse_avx512(data.data(), n);
+    benchmark::DoNotOptimize(data.data());
+    if (!Measure(state,
+                 [&] {
+                   for (int pass = 0; pass < passes; ++pass) {
+                     fma_reuse_avx512(data.data(), n);
+                   }
+                   benchmark::DoNotOptimize(data.data());
+                   benchmark::ClobberMemory();
+                 },
+                 &cycles)) {
+      return;
+    }
+    SetFmaCounters(state, n, passes, rounds, 4LL * n, 8LL * n, cycles, 0);
+    return;
+  }
+
+  FloatBuffer a(n), b(n), c(n), output(n);
+  FillInput(a.data(), n, DeriveSeed("fma", "a", n));
+  FillInput(b.data(), n, DeriveSeed("fma", "b", n));
+  FillInput(c.data(), n, DeriveSeed("fma", "c", n));
+  fma_once_avx512(a.data(), b.data(), c.data(), output.data(), n);
+  benchmark::DoNotOptimize(output.data());
+  if (!Measure(state,
+               [&] {
+                 for (int pass = 0; pass < passes; ++pass) {
+                   fma_once_avx512(a.data(), b.data(), c.data(), output.data(),
+                                   n);
+                 }
+                 benchmark::DoNotOptimize(output.data());
+                 benchmark::ClobberMemory();
+               },
+               &cycles)) {
+    return;
+  }
+  SetFmaCounters(state, n, passes, rounds, 16LL * n, 16LL * n, cycles, 1);
+}
+
 void RegisterReduceBenchmarks() {
   for (const bool use_avx512 : {false, true}) {
     for (const bool reduce_max : {false, true}) {
@@ -775,6 +972,18 @@ void RegisterSoftmaxBenchmarks() {
                                std::to_string(n);
       benchmark::RegisterBenchmark(name.c_str(), RunSoftmaxBenchmark,
                                    use_avx512)
+          ->Arg(static_cast<std::int64_t>(n));
+    }
+  }
+}
+
+void RegisterFmaBenchmarks() {
+  for (const bool reuse : {true, false}) {
+    for (const std::size_t n : DenseSizes()) {
+      const std::string name = std::string("fma/") +
+                               (reuse ? "reuse/" : "once/") + "avx512/" +
+                               std::to_string(n);
+      benchmark::RegisterBenchmark(name.c_str(), RunFmaBenchmark, reuse)
           ->Arg(static_cast<std::int64_t>(n));
     }
   }

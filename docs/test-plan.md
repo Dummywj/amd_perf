@@ -11,8 +11,11 @@
 | 第二次补充批准日期 | 2026-07-14（可归因运行环境门禁和完整第三批重采） |
 | 第三次补充批准日期 | 2026-07-14（采用既有第一批生成非正式探索性报告） |
 | 第四次补充批准日期 | 2026-07-14（113 点 dense sweep 和连续 load/store 对照） |
-| 本轮算子 | Softmax、Reduce、Gather、Scatter |
+| 第五次补充批准日期 | 2026-07-15（将两种 FMA 算术强度场景纳入 dense suite） |
+| 本轮算子 | Softmax、Reduce、Gather、Scatter、FMA |
 | 本轮数据类型 | FP32 |
+
+第五次补充范围将 FMA 纳入同一 dense suite：`reuse` 每次加载后执行 64 轮 FMA，`once` 每个元素只执行一次 `a*b+c`。两条曲线均使用现有 113 点尺寸、7 次重复和相同 NUMA 绑核；FMA 的主要计算吞吐指标为 `flop/core_cycle`。
 
 本文档曾以“待用户审核，禁止执行”状态冻结；用户于 2026-07-14 明确审核通过，执行门禁现已解除并进入执行阶段。执行期间发现 `stride17` 与两个 correctness-only 尺寸的唯一索引约束冲突，执行已按门禁暂停；用户批准本文件记录的 `N/A` 修订后恢复执行。随后，旧的“出现任何全局 swap 即停止”规则无法区分本轮进程污染和外部微量换入，执行再次按门禁暂停；用户于 2026-07-14 第二次补充批准本文件记录的可归因门禁和完整第三批重采后恢复执行。用户又于 2026-07-14 第三次补充批准：允许从完整第一批生成明确标注为非正式的探索性报告。该例外不改变第一批的正式失效状态，也不降低未来正式采集门禁。用户当前消息构成第四次补充批准：将新探索性 dense run 扩展为每条曲线 113 个尺寸，并为 Gather/Scatter 增加普通 AVX-512 load/store 对照；该范围已经批准，无需再次审核即可实施。未来正式采集门禁继续保留；后续若再修改范围或语义，仍须先更新本文档并重新获得批准。
 
@@ -121,6 +124,15 @@ y[i] = e[i] / s
 - 输入由固定种子确定性生成，范围限制在 `[-10, 10]`，不含 NaN/Inf。
 - `elements` 按输入长度 `N` 计算一次，不因内部三个阶段而乘 3。
 
+### FMA
+
+FMA 使用显式 AVX-512 FP32 FMA，固定两个算术强度场景，均使用同一套 113 点 `N`：
+
+- `fma/reuse/avx512`：每个 256 元素 ZMM block 加载 16 个独立 accumulator，随后对每个元素执行 64 轮 `x = x * 0.99999994 + 0.000001`，最后一次写回。该场景通过元素复用提高算术强度，用于观察 FMA 计算峰值；working set 为 `4N`，logical bytes 为 `8N`。
+- `fma/once/avx512`：读取 `a`、`b`、`c` 三个 FP32 输入并写入 `out`，每个元素只执行一次 `out[i] = a[i] * b[i] + c[i]`；working set 和 logical bytes 均为 `16N`。
+
+FMA 不提供 scalar 对照；`elem/core_cycle` 表示 lane-wise FMA element operations/cycle，`flop/core_cycle` 为其两倍并作为主要计算吞吐指标。两条 FMA 内核必须在反汇编中出现 AVX-512 `vfmadd*ps`，并覆盖 mask tail 的正确性。
+
 ### Gather
 
 输入包括长度为 `M` 的 FP32 `table` 和长度为 `K` 的 `uint32_t index`，输出为长度 `K` 的 FP32 向量：
@@ -217,13 +229,14 @@ sizes = {base[j] << octave | octave = 0..15, j = 0..6} U {1 << 26}
 | Gather contiguous | 113 个 N | `avx512_load_store`，1 条曲线 | `113` |
 | Scatter indexed | 4 种索引 * 113 个 N | scalar + `avx512_vscatter`，共 8 条曲线 | `4 * 2 * 113 = 904` |
 | Scatter contiguous | 113 个 N | `avx512_load_store`，1 条曲线 | `113` |
-| **总计** | **24 条曲线** |  | **2,712** |
+| FMA | reuse/once * 113 个 N | AVX-512，共 2 条曲线 | `226` |
+| **总计** | **26 条曲线** |  | **2,938** |
 
-2,712 只统计 dense 主性能 case，不包括 correctness-only 尺寸、构建回归或失败运行。每个 case 运行 7 repetitions，因此应产生 `2,712 * 7 = 18,984` 条 raw repetition rows。
+2,938 只统计 dense 主性能 case，不包括 correctness-only 尺寸、构建回归或失败运行。每个 case 运行 7 repetitions，因此应产生 `2,938 * 7 = 20,566` 条 raw repetition rows。
 
 ### Tail 正确性专用尺寸
 
-以下长度只做正确性测试，不进入 dense 性能图表或 2,712 个 case：
+以下长度只做正确性测试，不进入 dense 性能图表或 2,938 个 case：
 
 ```text
 1, 7, 15, 17, 1003
@@ -250,10 +263,12 @@ correctness-only 的索引模式适用规则为：
 | Gather contiguous | `4N + 4N = 8N` | `8N`：table 连续读、out 连续写，不含 index |
 | Scatter indexed | `4K + 4K + 4M`，本轮为 `12N` | `12K`：index 读、src 读、dst 写 |
 | Scatter contiguous | `4N + 4N = 8N` | `8N`：src 连续读、dst 连续写，不含 index |
+| FMA reuse | `4N` | `8N`：每个元素一次加载和一次写回，计算阶段执行 64 轮 FMA |
+| FMA once | `16N` | `16N`：a、b、c 三路读取和 output 一路写回，每个元素一次 FMA |
 
 `logical bytes` 是算子语义和已冻结 pass 结构产生的逻辑流量，不等于硬件总线流量；不额外估算 write-allocate、cache line 过取、页表访问或预取。最终报告不得把逻辑 GB/s 描述成实测 DRAM 带宽，也不得把 contiguous 虚计为 `12N`。indexed 和 contiguous 在相同 `N` 下的比值同时包含 index 流和指令语义差异，不能称为纯 SIMD speedup。
 
-结果 counter ID 冻结如下：`implementation_id=0` 表示 scalar，`1` 表示 indexed AVX-512（Gather 为 `vgather`、Scatter 为 `vscatter`），`2` 表示 contiguous AVX-512 load/store；`pattern_id=0..3` 保持现有四种 indexed pattern，`pattern_id=4` 表示 contiguous。contiguous 必须使用独立 runner，不能复用会分配 index 的 indexed runner。
+结果 counter ID 冻结如下：`implementation_id=0` 表示 scalar，`1` 表示 indexed AVX-512（Gather 为 `vgather`、Scatter 为 `vscatter`），`2` 表示 contiguous AVX-512 load/store；`pattern_id=0..3` 保持现有四种 indexed pattern，`pattern_id=4` 表示 contiguous，FMA `reuse/once` 使用 `pattern_id=0/1`。contiguous 必须使用独立 runner，不能复用会分配 index 的 indexed runner。
 
 ## 计时边界与指标
 
@@ -371,8 +386,8 @@ global_pswpin_rate <= 1 MiB/s
 - 第二批 `ops_fp32_20260714-155323` 不完整，并按旧的全局 swap 规则停止，只作诊断资料，不作为正式或探索性 canonical 数据源。
 - 第三批 `ops_fp32_20260714-161522` 只作诊断资料，不作为正式或探索性 canonical 数据源。
 - 第一、第二、第三批不得合并为更多 repetitions，不得逐 case 择优，也不得拼接成正式或探索性结果。
-- 未来正式采集必须创建新的 `ops_fp32_<YYYYMMDD-HHMMSS>` 目录，按当前 dense 规格完整重采全部 2,712 个主性能 case。四个算子都必须重新采集，不复用上述三个批次的数据。
-- 未来正式采集每完成一个算子，立即检查该 binary 的进程级、系统级和 `pswpin` 门禁。未通过的原始输出保留为诊断并明确标记 invalid；修复环境后重新采集该算子，只有四个算子都通过门禁后，该新批次才能作为正式结果。
+- 未来正式采集必须创建新的 `ops_fp32_<YYYYMMDD-HHMMSS>` 目录，按当前 dense 规格完整重采全部 2,938 个主性能 case。五个算子都必须重新采集，不复用上述三个批次的数据。
+- 未来正式采集每完成一个算子，立即检查该 binary 的进程级、系统级和 `pswpin` 门禁。未通过的原始输出保留为诊断并明确标记 invalid；修复环境后重新采集该算子，只有五个算子都通过门禁后，该新批次才能作为正式结果。
 
 ### 第三次批准的 sparse 探索性输出例外
 
@@ -385,7 +400,7 @@ global_pswpin_rate <= 1 MiB/s
 - 本次不要求补跑 `perf stat`，必须在 summary 中写明 `perf stat: skipped in exploratory mode`，不得用估算值填充硬件计数器。
 - 不得从第二、第三批补缺或选择更好数值，也不得将多个批次合并。
 
-所有探索性 MD、SVG 和 summary 的标题或首屏必须包含以下等价且醒目的声明，不得只放在脚注：
+所有探索性 MD 和 summary 的标题或首屏必须包含以下等价且醒目的声明，不得只放在脚注。SVG 根据当前用户批准的展示修订只保留简洁算子标题，风险声明由同目录 MD、summary、validation、commands 和 provenance 承担：
 
 ```text
 EXPLORATORY / NON-FORMAL
@@ -401,7 +416,16 @@ EXPLORATORY / NON-FORMAL
 - `CV > 5%` 不重跑，只在表格、图和 summary 中标记 `UNSTABLE`；所有 scalar/AVX-512 speedup 和相对趋势必须附带两侧 CV/不稳定状态。
 - 本次不运行 `perf stat`，summary 固定记录 `perf stat: skipped in exploratory dense mode`。
 - 语义门禁不豁免：113 尺寸结构断言、新 contiguous correctness、case/curve 完整性和反汇编指令检查必须通过，否则测量对象可能与批准语义不同。
-- 所有 dense MD、SVG 和 summary 的标题或首屏必须标记 `EXPLORATORY / NON-FORMAL`，并声明环境可能受外部 Java/ZGC 和 CPU 争用干扰；不得用于绝对性能、跨机器、回归、容量、硬件上限或正式验收结论。
+- 所有 dense MD 和 summary 的标题或首屏必须标记 `EXPLORATORY / NON-FORMAL`，并声明环境可能受外部 Java/ZGC 和 CPU 争用干扰；不得用于绝对性能、跨机器、回归、容量、硬件上限或正式验收结论。SVG 只展示简洁算子标题，不重复环境警告或主机信息。
+
+### 第五次批准的 FMA 扩展
+
+用户随后批准将 FMA 纳入同一 dense suite，不改变前四个算子的既有语义和尺寸矩阵：
+
+- 新增 `fma/reuse/avx512` 与 `fma/once/avx512` 两条 113 点曲线，分别使用 64 轮复用和单次 `a*b+c`。
+- 新增 `fma_fp32.json`、`fma_fp32.md`、`fma_fp32.svg`，并纳入同一 `commands.log`、`summary.md`、`validation.md` 和 `provenance.json`。
+- 完整 dense suite 变为 26 条曲线、2,938 cases、20,566 raw repetition rows；FMA 以 `flop/core_cycle` 作为主要计算吞吐指标。
+- correctness 和反汇编门禁必须覆盖 FMA 两条内核；探索性运行仍不运行正式 runtime gate 或 `perf stat`。
 
 ## 重复次数与统计口径
 
@@ -527,7 +551,7 @@ gbench-test/results/exploratory_ops_fp32_20260714-152755_<YYYYMMDD-HHMMSS>/
 gbench-test/results/exploratory_ops_fp32_dense_<YYYYMMDD-HHMMSS>/
 ```
 
-`runtime-gates/` 保存四个正式 binary 的 warm/formal 标识、`time -v` 原始输出、进程 fault/context-switch 数据、1 Hz 系统采样、PSI、MemAvailable、CPU 竞争和 `pswpin/pswpout` 起止值。必要时可增加机器可读的 `environment.json` 和 `correctness.json`，但不得省略上述人类可读文件。`commands.log` 记录可重现的构建和运行命令，不记录密钥或无关环境变量。
+`runtime-gates/` 保存五个正式 binary 的 warm/formal 标识、`time -v` 原始输出、进程 fault/context-switch 数据、1 Hz 系统采样、PSI、MemAvailable、CPU 竞争和 `pswpin/pswpout` 起止值。必要时可增加机器可读的 `environment.json` 和 `correctness.json`，但不得省略上述人类可读文件。`commands.log` 记录可重现的构建和运行命令，不记录密钥或无关环境变量。
 
 `summary.md` 至少包含：
 
@@ -535,22 +559,28 @@ gbench-test/results/exploratory_ops_fp32_dense_<YYYYMMDD-HHMMSS>/
 - 主机、CPU、NUMA、绑核、SMT sibling、编译器、flags、依赖版本和 git 状态。
 - 第一批 `ops_fp32_20260714-152755` 因 CPU 争用正式失效但经第三次补充批准成为 exploratory canonical、第二批 `ops_fp32_20260714-155323` 不完整、第三批 `ops_fp32_20260714-161522` 仅诊断的处置；明确三个批次均未升级为正式结果且未合并。
 - 未来正式批次每个 binary 的 warm 状态、major/minor faults、CPU 利用率、context switches、`pswpout`、memory PSI、MemAvailable、`procs_running`、整机 CPU、CPU 8/200 竞争检查以及全局 `pswpin` 起止值和速率。非零但通过门禁的 `pswpin` 标记为 advisory。
-- 四个算子的精确定义、实现差异、输入构造、SLEEF `u10` 入口和正确性结果。
+- 五个算子的精确定义、实现差异、输入构造、SLEEF `u10` 入口、FMA 轮数和正确性结果。
 - 各 case 的 median、min、CV、`elem/core_cycle`、`ns/element`、logical GB/s 和 scalar/AVX-512 speedup。
 - 按 working set 和索引模式绘制的曲线，以及可证据支持的 cache/内存拐点分析。
 - `perf stat` 的可用事件、不可用事件、multiplex 情况和方向性解释。
 - unstable、失败、跳过和重跑 case 的完整列表。
 - logical bytes 与实测 DRAM bytes 的区别、外部 `perf stat` 设置开销等限制。
 
-第三次批准的 sparse 探索性 summary 以对应例外中的三行声明开头，并额外包含：外部 Java/ZGC 和 CPU 争用干扰、绝对性能/跨机器/回归禁用范围、每个 case 的 CV 与 `UNSTABLE` 标记、仅使用第一批的证明，以及 `perf stat: skipped in exploratory mode`。探索性 MD 和 SVG 也必须在标题或首屏显示 `EXPLORATORY / NON-FORMAL`，不能只依赖 summary 的说明。
+第三次批准的 sparse 探索性 summary 以对应例外中的三行声明开头，并额外包含：外部 Java/ZGC 和 CPU 争用干扰、绝对性能/跨机器/回归禁用范围、每个 case 的 CV 与 `UNSTABLE` 标记、仅使用第一批的证明，以及 `perf stat: skipped in exploratory mode`。探索性 MD 必须在标题或首屏显示 `EXPLORATORY / NON-FORMAL`；SVG 根据当前展示修订只保留简洁算子标题。
 
 第四次 dense 报告还必须满足：
 
 - 校验并报告 24 条曲线、每条 113 个 unique N、共 2,712 cases 和 18,984 raw repetition rows；缺失或重复时报告生成失败，不能静默画残缺曲线。
 - Gather/Scatter 主图使用 `N` 的 log2 x 轴，以便在相同 N 比较 `12N` indexed 和 `8N` contiguous；表格继续列出每条曲线的真实 working set 和 logical GB/s。需要时可另绘 working-set 图，但不能用错位的 working-set x 轴读取同 N 比值。
-- Gather/Scatter 以 pattern 区分颜色、implementation 区分线型；113 个普通点不逐点画 marker，只标全部 2 次幂锚点和 `CV > 5%` 的空心 `UNSTABLE` 点，避免 9 条曲线、1,017 个点互相遮挡。
+- Gather/Scatter 以 pattern 区分颜色、implementation 区分线型；稳定点不额外绘制 marker，只绘制 `CV > 5%` 的空心 `UNSTABLE` 点，避免 9 条曲线、1,017 个点互相遮挡。
 - scalar speedup 只配对同一 indexed variant 的 `scalar` 与 `avx512_vgather`/`avx512_vscatter`。contiguous 不显示“AVX speedup”；如报告其与 indexed SIMD 的比值，名称必须是 `contiguous/indexed-SIMD throughput ratio`，并注明它同时移除了 index 流且 logical bytes 为 `8N` 对 `12N`。
 - summary 记录整数尺寸公式、ID 映射、indexed sequential 强制 gather/scatter、contiguous 普通 load/store、反汇编证据、各算子实际耗时、不稳定 case 数，以及 `perf stat: skipped in exploratory dense mode`。
+
+第五次 FMA 扩展还必须满足：
+
+- 校验并报告 26 条曲线、每条 113 个 unique N、共 2,938 cases 和 20,566 raw repetition rows。
+- FMA 报告同时列出 `reuse`/`once` 的 FMA rounds、`elem/core_cycle` 和 `flop/core_cycle`；`flop/core_cycle` 为主要计算吞吐指标。
+- FMA correctness 覆盖 tail 和代表性对齐尺寸，反汇编必须确认两条内核包含 AVX-512 `vfmadd*ps`。
 
 ## 预计资源开销
 
@@ -568,13 +598,15 @@ Total:  2712 * 7 * 0.25s = 4746.00s，即 79 分 06 秒
 
 64M FP32 或 `uint32_t` 数组各约 256 MiB。Scatter 完整参考校验以及 Softmax double 参考可能同时需要额外缓冲，计划峰值内存约 1-1.5 GiB。执行前必须检查可用内存和结果目录空间；不得依赖 swap 完成测试。
 
+第五次扩展新增 FMA 的理论计时下限为 `226 * 7 * 0.25s = 395.50s`，即约 6 分 35 秒；完整五算子 dense suite 的理论下限约为 85 分 41 秒。FMA reuse 的高算术强度通常会使大尺寸迭代明显超过 min-time，实际运行仍预计 2-4 小时或更久。
+
 ## 实施顺序
 
 ### 第三次批准的 sparse 探索性输出
 
 1. 确认第三次补充批准已记录，只读取 `ops_fp32_20260714-152755` 的既有 198 个 case。
 2. 在新的 `exploratory_ops_fp32_20260714-152755_<YYYYMMDD-HHMMSS>` 目录生成 MD、SVG 和 summary，不重新运行 benchmark 或 `perf stat`。
-3. 为所有产物加入 `EXPLORATORY / NON-FORMAL`、Java/ZGC/CPU 干扰和禁用范围声明；报告 CV，并将 `CV > 5%` 标为 `UNSTABLE`。
+3. 为 MD、summary、validation、commands 和 provenance 加入 `EXPLORATORY / NON-FORMAL`、Java/ZGC/CPU 干扰和禁用范围声明；SVG 只保留简洁算子标题；报告 CV，并将 `CV > 5%` 标为 `UNSTABLE`。
 4. 验证没有使用第二、第三批数据，没有覆盖任何正式或原始结果目录。
 
 ### 第四次批准的 dense 探索性运行
@@ -583,8 +615,14 @@ Total:  2712 * 7 * 0.25s = 4746.00s，即 79 分 06 秒
 2. 用固定整数模板生成并断言 113 个尺寸，增加两个独立 contiguous runner/kernel、明确 implementation/pattern ID，并扩展现有 correctness。
 3. 构建后检查 indexed sequential 强制 `vgatherdps`/`vscatterdps`，contiguous 为普通 AVX-512 load/store 且没有 copy 库调用。
 4. 在新的 `exploratory_ops_fp32_dense_<YYYYMMDD-HHMMSS>` 目录按 7 repetitions、0.25 秒 min-time 运行全部 2,712 cases；不运行正式 runtime gate 或 `perf stat`，不中途因环境噪声/CV 停止。
-5. 生成适配 24 条 dense 曲线的 MD、SVG 和 summary，校验 18,984 raw repetition rows，标记所有 `CV > 5%` case 为 `UNSTABLE`，并保留醒目的非正式环境声明。
+5. 生成适配 24 条 dense 曲线的 MD、SVG 和 summary，校验 18,984 raw repetition rows，标记所有 `CV > 5%` case 为 `UNSTABLE`；非正式环境声明保留在 MD、summary、validation、commands 和 provenance 中，SVG 只展示简洁算子标题。
 6. 验证新目录没有覆盖 sparse 探索结果、前三批原始结果或未来正式目录。
+
+### 第五次批准的 FMA 扩展
+
+1. 在现有 `ops_common` 公共框架中注册 `fma/reuse/avx512` 和 `fma/once/avx512` 两条 113 点曲线。
+2. 执行 FMA correctness、反汇编和 dense benchmark-list 门禁，并将 FMA 纳入同一串行采集脚本。
+3. 在同一结果目录生成 `fma_fp32.json`、`fma_fp32.md`、`fma_fp32.svg`，更新综合 summary、validation、commands 和 provenance。
 
 ### 未来正式采集
 

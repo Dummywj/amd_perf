@@ -12,10 +12,12 @@ from ops_report import validate_dense_cases, load_cases
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Run one approved dense exploratory operation")
-    parser.add_argument("operation", choices=("reduce", "gather", "scatter", "softmax"))
+    parser.add_argument("operation", choices=("reduce", "gather", "scatter", "softmax", "fma"))
     parser.add_argument("binary")
     parser.add_argument("output_json")
     parser.add_argument("metadata_json")
+    parser.add_argument("--cpu", type=int, default=8)
+    parser.add_argument("--numa-node", type=int, default=0)
     return parser.parse_args()
 
 
@@ -32,8 +34,8 @@ def main():
         raise SystemExit("refusing to overwrite dense output or metadata")
     command = [
         "numactl",
-        "--physcpubind=8",
-        "--membind=0",
+        f"--physcpubind={args.cpu}",
+        f"--membind={args.numa_node}",
         binary,
         "--benchmark_min_time=0.25s",
         "--benchmark_repetitions=7",
@@ -44,6 +46,8 @@ def main():
     metadata = {
         "designation": "EXPLORATORY / NON-FORMAL",
         "operation": args.operation,
+        "cpu": args.cpu,
+        "numa_node": args.numa_node,
         "command": command,
         "started": now(),
     }

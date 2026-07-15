@@ -22,6 +22,8 @@ constexpr std::array<std::size_t, 14> kSizes = {
 constexpr std::array<ops::Pattern, 4> kPatterns = {
     ops::Pattern::kSequential, ops::Pattern::kStride17,
     ops::Pattern::kBlockRandom4k, ops::Pattern::kUniformRandom};
+constexpr std::array<std::size_t, 8> kFmaSizes = {
+    1, 7, 15, 17, 1003, 1024, 4096, 16384};
 
 std::uint32_t FloatBits(float value) {
   std::uint32_t bits;
@@ -210,6 +212,73 @@ void CheckSoftmax(Reporter* reporter) {
          "`5e-4`, output sum error <= `5e-4`.\n\n";
 }
 
+void CheckFma(Reporter* reporter) {
+  constexpr float kMul = 0.99999994f;
+  constexpr float kAdd = 0.000001f;
+  reporter->output
+      << "## FMA\n\n"
+      << "| N | Case | Max abs error | Finite output | Status |\n"
+      << "| ---: | --- | ---: | --- | --- |\n";
+  for (const std::size_t n : kFmaSizes) {
+    ops::FloatBuffer input(n), reference(n), output(n);
+    ops::FillInput(input.data(), n, ops::DeriveSeed("fma", "reuse", n));
+    std::copy(input.data(), input.data() + n, reference.data());
+    for (std::size_t i = 0; i < n; ++i) {
+      for (int round = 0; round < ops::kFmaReuseRounds; ++round) {
+        reference.data()[i] = std::fma(reference.data()[i], kMul, kAdd);
+      }
+    }
+    std::copy(input.data(), input.data() + n, output.data());
+    ops::fma_reuse_avx512(output.data(), n);
+    double reuse_error = 0.0;
+    bool reuse_finite = true;
+    for (std::size_t i = 0; i < n; ++i) {
+      reuse_error = std::max(
+          reuse_error,
+          std::abs(static_cast<double>(output.data()[i]) -
+                   static_cast<double>(reference.data()[i])));
+      reuse_finite = reuse_finite && std::isfinite(output.data()[i]);
+    }
+    const bool reuse_pass = reuse_finite && reuse_error <= 2e-6;
+    reporter->output << "| " << n << " | reuse (64 rounds) | "
+                     << std::scientific << std::setprecision(6) << reuse_error
+                     << " | " << (reuse_finite ? "yes" : "no") << " | "
+                     << (reuse_pass ? "PASS" : "FAIL") << " |\n";
+    if (!reuse_pass) {
+      reporter->Failure("fma reuse correctness at N=" + std::to_string(n));
+    }
+
+    ops::FloatBuffer a(n), b(n), c(n), once_reference(n), once_output(n);
+    ops::FillInput(a.data(), n, ops::DeriveSeed("fma", "a", n));
+    ops::FillInput(b.data(), n, ops::DeriveSeed("fma", "b", n));
+    ops::FillInput(c.data(), n, ops::DeriveSeed("fma", "c", n));
+    for (std::size_t i = 0; i < n; ++i) {
+      once_reference.data()[i] =
+          std::fma(a.data()[i], b.data()[i], c.data()[i]);
+    }
+    ops::fma_once_avx512(a.data(), b.data(), c.data(), once_output.data(), n);
+    double once_error = 0.0;
+    bool once_finite = true;
+    for (std::size_t i = 0; i < n; ++i) {
+      once_error = std::max(
+          once_error,
+          std::abs(static_cast<double>(once_output.data()[i]) -
+                   static_cast<double>(once_reference.data()[i])));
+      once_finite = once_finite && std::isfinite(once_output.data()[i]);
+    }
+    const bool once_pass = once_finite && once_error <= 1e-6;
+    reporter->output << "| " << n << " | once (1 round) | "
+                     << std::scientific << std::setprecision(6) << once_error
+                     << " | " << (once_finite ? "yes" : "no") << " | "
+                     << (once_pass ? "PASS" : "FAIL") << " |\n";
+    if (!once_pass) {
+      reporter->Failure("fma once correctness at N=" + std::to_string(n));
+    }
+  }
+  reporter->output << "\nThresholds: reuse max absolute error <= `2e-6`; once max "
+                      "absolute error <= `1e-6`.\n\n";
+}
+
 void CheckGather(Reporter* reporter) {
   reporter->output << "## Gather\n\n"
                    << "| N | Pattern | Permutation | Scalar | AVX-512 vgather |\n"
@@ -394,6 +463,7 @@ int main(int argc, char** argv) {
   CheckScatter(&reporter);
   CheckScatterContiguous(&reporter);
   CheckSoftmax(&reporter);
+  CheckFma(&reporter);
   reporter.output << "## Final status\n\n**"
                   << (reporter.ok ? "PASS" : "FAIL") << "**\n";
   return reporter.ok ? 0 : 1;

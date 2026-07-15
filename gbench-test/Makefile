@@ -1,4 +1,4 @@
-.PHONY: all configure build run results clean list-payloads ops-build ops-correctness
+.PHONY: all configure build run results clean list-payloads ops-build ops-correctness ops-dense
 
 CMAKE ?= cmake
 BUILD_DIR ?= build
@@ -9,8 +9,15 @@ NUMA_NODE ?= 0
 PAYLOAD ?= smoke
 
 RESULTS_DIR ?= results
+DENSE_BUILD_DIR ?= build-ops-release
+DENSE_CPU ?= 8
+DENSE_NUMA_NODE ?= 0
+DENSE_SMT_SIBLING ?= 200
+DENSE_JOBS ?= 16
+DENSE_RUN_ID ?= $(shell date +%Y%m%d-%H%M%S)
+DENSE_RESULTS_DIR ?= $(RESULTS_DIR)/exploratory_dense_ops_fp32_$(DENSE_RUN_ID)
 
-VALID_PAYLOADS := smoke fma-register-peak fp32-fma-length-sweep reduce-fp32 gather-fp32 scatter-fp32 softmax-fp32
+VALID_PAYLOADS := smoke fma-register-peak fp32-fma-length-sweep reduce-fp32 gather-fp32 scatter-fp32 softmax-fp32 fma-fp32
 
 ifneq ($(filter $(PAYLOAD),smoke gbench_smoke),)
 BENCH_TARGET := gbench_smoke
@@ -58,6 +65,13 @@ BENCH_BIN := $(BUILD_DIR)/softmax_fp32_bench
 RESULT_JSON := $(RESULTS_DIR)/softmax_fp32.json
 REPORT_MD := $(RESULTS_DIR)/softmax_fp32.md
 PLOT_SVG := $(RESULTS_DIR)/softmax_fp32.svg
+else ifeq ($(PAYLOAD),fma-fp32)
+OPS_PAYLOAD := 1
+BENCH_TARGET := fma_fp32_bench
+BENCH_BIN := $(BUILD_DIR)/fma_fp32_bench
+RESULT_JSON := $(RESULTS_DIR)/fma_fp32.json
+REPORT_MD := $(RESULTS_DIR)/fma_fp32.md
+PLOT_SVG := $(RESULTS_DIR)/fma_fp32.svg
 else
 $(error unknown PAYLOAD '$(PAYLOAD)'; valid values: $(VALID_PAYLOADS))
 endif
@@ -71,10 +85,21 @@ build: configure
 	$(CMAKE) --build $(BUILD_DIR) --target $(BENCH_TARGET) -j $(JOBS)
 
 ops-build: configure
-	$(CMAKE) --build $(BUILD_DIR) --target ops_fp32_correctness reduce_fp32_bench gather_fp32_bench scatter_fp32_bench softmax_fp32_bench -j $(JOBS)
+	$(CMAKE) --build $(BUILD_DIR) --target ops_fp32_correctness reduce_fp32_bench gather_fp32_bench scatter_fp32_bench softmax_fp32_bench fma_fp32_bench -j $(JOBS)
 
 ops-correctness: ops-build results
 	$(BUILD_DIR)/ops_fp32_correctness $(RESULTS_DIR)/correctness.md
+
+ops-dense:
+	$(MAKE) ops-build BUILD_DIR="$(DENSE_BUILD_DIR)" CONFIG="$(CONFIG)" JOBS="$(DENSE_JOBS)"
+	python3 scripts/run_dense_suite.py \
+		--build-dir "$(DENSE_BUILD_DIR)" \
+		--output-dir "$(DENSE_RESULTS_DIR)" \
+		--cpu "$(DENSE_CPU)" \
+		--numa-node "$(DENSE_NUMA_NODE)" \
+		--smt-sibling "$(DENSE_SMT_SIBLING)" \
+		--config "$(CONFIG)" \
+		--jobs "$(DENSE_JOBS)"
 
 run: build results
 ifeq ($(OPS_PAYLOAD),1)
@@ -91,7 +116,7 @@ endif
 	python3 scripts/gbench_json_to_md.py $(RESULT_JSON) $(REPORT_MD)
 ifneq ($(filter $(PAYLOAD),fp32-fma-length-sweep fp32_fma_length_sweep),)
 	python3 scripts/plot_fma_length_sweep.py $(RESULT_JSON) $(PLOT_SVG)
-else ifneq ($(filter $(PAYLOAD),reduce-fp32 gather-fp32 scatter-fp32 softmax-fp32),)
+else ifneq ($(filter $(PAYLOAD),reduce-fp32 gather-fp32 scatter-fp32 softmax-fp32 fma-fp32),)
 	python3 scripts/ops_report.py $(RESULT_JSON) $(REPORT_MD) $(PLOT_SVG) --dense
 else
 	@printf 'plot: PAYLOAD=%s has no plot generator; generated %s and %s\n' "$(PAYLOAD)" "$(RESULT_JSON)" "$(REPORT_MD)"

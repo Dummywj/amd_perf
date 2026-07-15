@@ -12,6 +12,7 @@ namespace ops {
 constexpr std::uint64_t kGlobalSeed = 20260714ULL;
 constexpr std::int64_t kMinElementsPerIteration = 1LL << 15;
 constexpr std::size_t kDenseSizeCount = 113;
+constexpr int kFmaReuseRounds = 64;
 using DenseSizeArray = std::array<std::size_t, kDenseSizeCount>;
 
 enum class Pattern : int {
@@ -84,6 +85,9 @@ void scatter_avx512_vscatter(const float* src, const std::uint32_t* index,
 void scatter_avx512_load_store(const float* src, float* dst, std::size_t n);
 void softmax_scalar(const float* input, float* output, std::size_t n);
 void softmax_avx512(const float* input, float* output, std::size_t n);
+void fma_reuse_avx512(float* data, std::size_t n);
+void fma_once_avx512(const float* a, const float* b, const float* c,
+                     float* output, std::size_t n);
 }
 
 void RunReduceBenchmark(benchmark::State& state, bool use_avx512,
@@ -95,10 +99,12 @@ void RunScatterBenchmark(benchmark::State& state, bool use_avx512,
                          Pattern pattern);
 void RunScatterContiguousBenchmark(benchmark::State& state);
 void RunSoftmaxBenchmark(benchmark::State& state, bool use_avx512);
+void RunFmaBenchmark(benchmark::State& state, bool reuse);
 
 void RegisterReduceBenchmarks();
 void RegisterGatherBenchmarks();
 void RegisterScatterBenchmarks();
 void RegisterSoftmaxBenchmarks();
+void RegisterFmaBenchmarks();
 
 }  // namespace ops

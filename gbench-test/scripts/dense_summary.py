@@ -4,6 +4,7 @@ import argparse
 import hashlib
 import json
 import re
+import shlex
 import statistics
 import subprocess
 from collections import defaultdict
@@ -17,6 +18,7 @@ EXPECTED = {
     "gather": (9, 1017, 7119),
     "scatter": (9, 1017, 7119),
     "softmax": (2, 226, 1582),
+    "fma": (2, 226, 1582),
 }
 ANCHORS = (1 << 10, 1 << 18, 1 << 26)
 
@@ -24,6 +26,12 @@ ANCHORS = (1 << 10, 1 << 18, 1 << 26)
 def parse_args():
     parser = argparse.ArgumentParser(description="Build and validate a dense exploratory report")
     parser.add_argument("output_dir")
+    parser.add_argument("--build-dir", default="build-ops-release")
+    parser.add_argument("--cpu", type=int, default=8)
+    parser.add_argument("--numa-node", type=int, default=0)
+    parser.add_argument("--smt-sibling", type=int, default=200)
+    parser.add_argument("--config", default="Release")
+    parser.add_argument("--jobs", type=int, default=16)
     return parser.parse_args()
 
 
@@ -77,35 +85,104 @@ def pair_status(left, right):
     return "UNSTABLE" if left["elem_cycle"]["cv"] > 0.05 or right["elem_cycle"]["cv"] > 0.05 else "stable"
 
 
-def write_commands(output_dir, metadata):
-    relative_output = f"results/{output_dir.name}"
+def command_line(parts):
+    return shlex.join(str(part) for part in parts)
+
+
+def write_commands(output_dir, metadata, config):
+    build_dir = config.build_dir
     lines = [
         "EXPLORATORY / NON-FORMAL - DENSE FP32 COMMAND RECORD",
         "Newly collected dense exploratory data; external Java/ZGC activity and CPU contention may affect the environment.",
         "Relative trends only; no absolute, cross-machine, regression, capacity, hardware-limit, or formal-acceptance conclusions.",
         "",
-        "# Build and semantic gates",
-        "cmake --build build-ops-release --target ops_fp32_correctness reduce_fp32_bench gather_fp32_bench scatter_fp32_bench softmax_fp32_bench -j 16",
+        "# Make entry point",
+        command_line(
+            [
+                "make",
+                "ops-dense",
+                f"DENSE_BUILD_DIR={build_dir}",
+                f"DENSE_CPU={config.cpu}",
+                f"DENSE_NUMA_NODE={config.numa_node}",
+                f"DENSE_SMT_SIBLING={config.smt_sibling}",
+                f"DENSE_RESULTS_DIR={output_dir}",
+                f"CONFIG={config.config}",
+                f"DENSE_JOBS={config.jobs}",
+            ]
+        ),
+        "",
+        "# Semantic gates executed by the suite script",
         "python3 -m unittest -v scripts/test_ops_report.py",
-        "python3 scripts/validate_dense_benchmark_list.py build-ops-release",
-        "python3 scripts/check_ops_disassembly.py build-ops-release /tmp/dense_disassembly.md --dense-exploratory",
-        "numactl --physcpubind=8 --membind=0 build-ops-release/ops_fp32_correctness /tmp/dense_correctness.md --dense-exploratory",
-        f"cp /tmp/dense_correctness.md {relative_output}/correctness.md",
-        f"cp /tmp/dense_disassembly.md {relative_output}/disassembly.md",
-        f"scripts/collect_ops_environment.sh {relative_output}/environment.md 8 200 dense-exploratory",
+        command_line(["python3", "scripts/validate_dense_benchmark_list.py", build_dir]),
+        command_line(
+            [
+                "python3",
+                "scripts/check_ops_disassembly.py",
+                build_dir,
+                output_dir / "disassembly.md",
+                "--dense-exploratory",
+            ]
+        ),
+        command_line(
+            [
+                "numactl",
+                f"--physcpubind={config.cpu}",
+                f"--membind={config.numa_node}",
+                Path(build_dir) / "ops_fp32_correctness",
+                output_dir / "correctness.md",
+                "--dense-exploratory",
+            ]
+        ),
+        command_line(
+            [
+                "scripts/collect_ops_environment.sh",
+                output_dir / "environment.md",
+                config.cpu,
+                config.smt_sibling,
+                "dense-exploratory",
+            ]
+        ),
         "",
         "# Dense benchmark commands actually executed",
     ]
     for operation in EXPECTED:
-        lines.append(" ".join(metadata[operation]["command"]))
+        lines.append(command_line(metadata[operation]["command"]))
     lines.extend(["", "# Offline report commands"])
     for operation in EXPECTED:
         lines.append(
-            f"python3 scripts/ops_report.py {relative_output}/{operation}_fp32.json {relative_output}/{operation}_fp32.md {relative_output}/{operation}_fp32.svg --exploratory --dense"
+            command_line(
+                [
+                    "python3",
+                    "scripts/ops_report.py",
+                    output_dir / f"{operation}_fp32.json",
+                    output_dir / f"{operation}_fp32.md",
+                    output_dir / f"{operation}_fp32.svg",
+                    "--exploratory",
+                    "--dense",
+                ]
+            )
         )
     lines.extend(
         [
-            f"python3 scripts/dense_summary.py {relative_output}",
+            command_line(
+                [
+                    "python3",
+                    "scripts/dense_summary.py",
+                    output_dir,
+                    "--build-dir",
+                    build_dir,
+                    "--cpu",
+                    config.cpu,
+                    "--numa-node",
+                    config.numa_node,
+                    "--smt-sibling",
+                    config.smt_sibling,
+                    "--config",
+                    config.config,
+                    "--jobs",
+                    config.jobs,
+                ]
+            ),
             "",
             "# Explicitly skipped",
             "formal runtime gate: skipped for the approved exploratory dense run",
@@ -178,6 +255,21 @@ def selected_rows(paired):
                     pair_status(indexed, contiguous),
                 )
             )
+        fma_once = paired[("fma", "once", n)]["avx512"]
+        fma_reuse = paired[("fma", "reuse", n)]["avx512"]
+        ratio = fma_reuse["flop_cycle"]["median"] / fma_once["flop_cycle"]["median"]
+        rows.append(
+            (
+                "fma",
+                "reuse",
+                n,
+                "once -> reuse flop/core_cycle",
+                fma_once,
+                fma_reuse,
+                ratio,
+                pair_status(fma_once, fma_reuse),
+            )
+        )
     return rows
 
 
@@ -185,6 +277,13 @@ def ratio_ranges(paired):
     standard = defaultdict(list)
     contiguous = defaultdict(list)
     for (operation, variant, n), implementations in paired.items():
+        if operation == "fma" and variant == "reuse":
+            once = paired[("fma", "once", n)]["avx512"]
+            reuse = implementations["avx512"]
+            if pair_status(once, reuse) == "stable":
+                standard[operation].append(
+                    reuse["flop_cycle"]["median"] / once["flop_cycle"]["median"]
+                )
         if "scalar" in implementations:
             simd_name = indexed_simd_name(operation, set(implementations))
             simd = implementations[simd_name]
@@ -205,7 +304,7 @@ def ratio_ranges(paired):
     return standard, contiguous
 
 
-def write_summary(output_dir, contexts, all_cases, metadata, manifest):
+def write_summary(output_dir, contexts, all_cases, metadata, manifest, config):
     paired = build_pairs(all_cases)
     unstable = {
         operation: [case for case in cases if case["elem_cycle"]["cv"] > 0.05]
@@ -219,7 +318,7 @@ def write_summary(output_dir, contexts, all_cases, metadata, manifest):
             "",
             "- Fourth supplemental approval date: 2026-07-14.",
             "- This is a newly collected dense exploratory batch; no case was reused, merged, selected, or copied from the three earlier diagnostic/sparse batches.",
-            "- Binding: CPU 8 on NUMA node 0; SMT sibling CPU 200 was documented but no formal isolation/runtime gate was applied.",
+            f"- Binding: CPU {config.cpu} on NUMA node {config.numa_node}; SMT sibling CPU {config.smt_sibling} was documented but no formal isolation/runtime gate was applied.",
             "- Seven randomized repetitions and 0.25-second minimum time were used for every case.",
             "- External Java/ZGC activity, swap, CPU contention, and CV did not stop this approved exploratory run.",
             "- `perf stat: skipped in exploratory dense mode`.",
@@ -242,7 +341,7 @@ def write_summary(output_dir, contexts, all_cases, metadata, manifest):
         )
     lines.extend(
         [
-            f"| **Total** | **24** | **2712** | **18984** | **{total_unstable}** | **{fmt_duration(total_seconds)}** |",
+            f"| **Total** | **26** | **2938** | **20566** | **{total_unstable}** | **{fmt_duration(total_seconds)}** |",
             "",
             "Every curve contains exactly the approved 113 unique N values. JSON SHA-256 hashes, run timestamps, command metadata, IDs, and logical-byte validation are recorded in `provenance.json` and `validation.md`.",
             "",
@@ -268,11 +367,12 @@ def write_summary(output_dir, contexts, all_cases, metadata, manifest):
             "The resulting 113 values are strictly increasing, unique, multiples of 16, coprime with 17, and contain every power-of-two anchor from 1K through 64M.",
             "",
             "- `implementation_id`: scalar=0, indexed AVX-512=1, contiguous AVX-512 load/store=2.",
-            "- `pattern_id`: sequential/stride17/block_random_4k/uniform_random=0/1/2/3, contiguous=4; Reduce/Softmax use -1.",
+            "- `pattern_id`: sequential/stride17/block_random_4k/uniform_random=0/1/2/3, contiguous=4, FMA reuse/once=0/1; Reduce/Softmax use -1.",
             "",
             "## Workload Semantics",
             "",
             "- Reduce computes FP32 sum or max. Softmax uses stable max, SLEEF u10 exp+sum, and normalization phases.",
+            "- FMA `reuse` performs 64 lane-wise FMA rounds between one load/store, while `once` performs one `a*b+c` per element; `flop/core_cycle` is the primary FMA compute-throughput metric.",
             "- Indexed Gather/Scatter always allocate and read a permutation index. Even sequential indexed SIMD is forced through `vgatherdps`/`vscatterdps` and uses a 12N logical-byte model.",
             "- Contiguous Gather/Scatter allocate no index and use explicit cached ZMM load/store with an 8N logical-byte model. It is a cached-copy control, not an equivalent third Gather/Scatter implementation.",
             "- Indexed patterns are identity, stride17 `(17*i) mod N`, deterministic 4K-block Fisher-Yates, and deterministic full-array Fisher-Yates.",
@@ -281,7 +381,7 @@ def write_summary(output_dir, contexts, all_cases, metadata, manifest):
             "## Semantic Gates",
             "",
             "- Correctness: PASS for dense size structure, the five tail sizes plus nine original numerical anchors, and contiguous Gather/Scatter bitwise checks.",
-            "- Disassembly: PASS. Indexed kernels contain `vgatherdps`/`vscatterdps`; contiguous kernels contain ordinary ZMM `vmovups` with masked tails and no gather/scatter or copy call; scalar timed math has no packed arithmetic body.",
+            "- Disassembly: PASS. Indexed kernels contain `vgatherdps`/`vscatterdps`; contiguous kernels contain ordinary ZMM `vmovups` with masked tails and no gather/scatter or copy call; scalar timed math has no packed arithmetic body; FMA kernels contain AVX-512 FMA instructions.",
             "",
             "## Selected Same-Batch Ratios",
             "",
@@ -307,6 +407,8 @@ def write_summary(output_dir, contexts, all_cases, metadata, manifest):
             ratio_label = (
                 "scalar/AVX-512"
                 if operation in ("reduce", "softmax")
+                else "reuse/once flop/core_cycle"
+                if operation == "fma"
                 else "scalar/indexed-SIMD"
             )
             lines.append(
@@ -349,7 +451,7 @@ def write_summary(output_dir, contexts, all_cases, metadata, manifest):
             f"- At 64M, Gather AVX-512/scalar is sequential {ratio_text('gather', 'sequential', 1 << 26)}, stride17 {ratio_text('gather', 'stride17', 1 << 26)}, block-random {ratio_text('gather', 'block_random_4k', 1 << 26)}, and uniform-random {ratio_text('gather', 'uniform_random', 1 << 26)}.",
             f"- At 64M, Scatter AVX-512/scalar is sequential {ratio_text('scatter', 'sequential', 1 << 26)}, stride17 {ratio_text('scatter', 'stride17', 1 << 26)}, block-random {ratio_text('scatter', 'block_random_4k', 1 << 26)}, and uniform-random {ratio_text('scatter', 'uniform_random', 1 << 26)}.",
             f"- At 64M, Gather contiguous/indexed-SIMD throughput ratio is {gather_contiguous['elem_cycle']['median'] / gather_indexed['elem_cycle']['median']:.3f}x (indexed CV {gather_indexed['elem_cycle']['cv']:.2%}; contiguous CV {gather_contiguous['elem_cycle']['cv']:.2%}; {pair_status(gather_indexed, gather_contiguous)}); Scatter is {scatter_contiguous['elem_cycle']['median'] / scatter_indexed['elem_cycle']['median']:.3f}x (indexed CV {scatter_indexed['elem_cycle']['cv']:.2%}; contiguous CV {scatter_contiguous['elem_cycle']['cv']:.2%}; {pair_status(scatter_indexed, scatter_contiguous)}). These ratios also remove the index stream and compare 8N versus 12N logical bytes.",
-            f"- {total_unstable} of 2712 implementation cases exceed 5% CV. This is concentrated in Scatter ({len(unstable['scatter'])}) and Gather ({len(unstable['gather'])}), so unstable regions cannot support determined cache-transition or speedup claims.",
+            f"- {total_unstable} of 2938 implementation cases exceed 5% CV. This is concentrated in Scatter ({len(unstable['scatter'])}) and Gather ({len(unstable['gather'])}); unstable regions cannot support determined cache-transition or speedup claims.",
         ]
     )
     lines.extend(
@@ -374,7 +476,7 @@ def write_summary(output_dir, contexts, all_cases, metadata, manifest):
             "",
             "## Environment And Limitations",
             "",
-            f"- Host: `{contexts['reduce'].get('host_name', '')}`; detailed topology, frequency policy, toolchain, memory/swap snapshot, git state, and resident CPU 8/200 tasks are in `environment.md`.",
+            f"- Host: `{contexts['reduce'].get('host_name', '')}`; detailed topology, frequency policy, toolchain, memory/swap snapshot, git state, and resident CPU {config.cpu}/{config.smt_sibling} tasks are in `environment.md`.",
             "- No formal runtime gate was applied. The report cannot establish CPU isolation, absence of external Java/ZGC interference, swap attribution, PSI compliance, or formal repeatability.",
             "- `ns/element` uses wall time and is sensitive to descheduling; `elem/core_cycle` uses in-process user core cycles.",
             "- `perf stat: skipped in exploratory dense mode`; no PMU or measured-DRAM conclusions are available.",
@@ -389,7 +491,7 @@ def write_validation(output_dir, all_cases, manifest):
     lines = warning_lines("Dense package validation")
     lines.extend(
         [
-            "All checks below were performed offline after the four benchmark commands completed. No formal runtime gate or `perf stat` was run.",
+            "All checks below were performed offline after the five benchmark commands completed. No formal runtime gate or `perf stat` was run.",
             "",
             "| Operation | Curves | Cases / MD rows | Raw repetitions | SVG dense curves | CV > 5% | JSON SHA-256 |",
             "| --- | ---: | ---: | ---: | ---: | ---: | --- |",
@@ -402,8 +504,7 @@ def write_validation(output_dir, all_cases, manifest):
         md_rows = len(re.findall(r"^\| .*\| (?:stable|UNSTABLE) \|$", markdown, re.MULTILINE))
         svg_curves = len(re.findall(r'<polyline data-curve="[^"]+" data-points="113"', svg))
         unstable = [case for case in cases if case["elem_cycle"]["cv"] > 0.05]
-        unstable_nonanchors = [case for case in unstable if case["elements"] & (case["elements"] - 1)]
-        expected_markers = expected_curves * 17 + len(unstable_nonanchors)
+        expected_markers = len(unstable)
         if md_rows != expected_cases or svg_curves != expected_curves:
             raise ValueError(f"{operation}: report row/curve mismatch")
         if svg.count("<circle ") != expected_markers or svg.count('class="unstable"') != len(unstable):
@@ -413,7 +514,7 @@ def write_validation(output_dir, all_cases, manifest):
         )
     lines.extend(
         [
-            "| **Total** | **24** | **2712 / 2712** | **18984** | **24** | **{}** | |".format(
+            "| **Total** | **26** | **2938 / 2938** | **20566** | **26** | **{}** | |".format(
                 sum(
                     case["elem_cycle"]["cv"] > 0.05
                     for cases in all_cases.values()
@@ -426,8 +527,8 @@ def write_validation(output_dir, all_cases, manifest):
             "- Every curve has exactly the same 113 approved unique N values in strict order.",
             "- Every case has seven raw repetitions and the approved implementation/pattern IDs, working set, and logical-byte counters.",
             "- Correctness and disassembly gates are PASS.",
-            "- Dense SVG uses N on the log2 x-axis; pattern controls color, implementation controls line style, ordinary non-anchor stable points have no marker, all power-of-two anchors are marked, and every unstable point is hollow.",
-            "- All human-readable package files begin with or visibly contain `EXPLORATORY / NON-FORMAL` and usage restrictions.",
+            "- Dense SVG uses N on the log2 x-axis; pattern controls color, implementation controls line style, stable points have no marker, and every unstable point is hollow.",
+            "- Markdown reports, summaries, validation, command records, and provenance retain the `EXPLORATORY / NON-FORMAL` designation and usage restrictions; SVG charts intentionally use only concise operation titles.",
             "- Earlier sparse/diagnostic batches were not read or merged by this generator.",
             "- `perf stat: skipped in exploratory dense mode`.",
             "",
@@ -454,8 +555,9 @@ def main():
             "size_count": len(DENSE_SIZES),
         },
         "collection_parameters": {
-            "cpu": 8,
-            "numa_node": 0,
+            "cpu": args.cpu,
+            "numa_node": args.numa_node,
+            "smt_sibling": args.smt_sibling,
             "benchmark_min_time": "0.25s",
             "benchmark_repetitions": 7,
             "benchmark_enable_random_interleaving": True,
@@ -481,6 +583,8 @@ def main():
         run = json.loads(metadata_path.read_text(encoding="utf-8"))
         if run.get("validation") != "PASS" or run.get("returncode") != 0:
             raise SystemExit(f"{operation}: run metadata is not PASS")
+        if run.get("cpu", args.cpu) != args.cpu or run.get("numa_node", args.numa_node) != args.numa_node:
+            raise SystemExit(f"{operation}: run binding does not match summary binding")
         all_cases[operation] = cases
         metadata[operation] = run
         manifest["files"][json_path.name] = {
@@ -492,7 +596,7 @@ def main():
             "raw_repetition_rows": observed[2],
             "run_metadata": metadata_path.name,
         }
-    manifest["totals"] = {"curves": 24, "cases": 2712, "raw_repetition_rows": 18984}
+    manifest["totals"] = {"curves": 26, "cases": 2938, "raw_repetition_rows": 20566}
     (output_dir / "provenance.json").write_text(
         json.dumps(manifest, indent=2) + "\n", encoding="utf-8"
     )
@@ -502,9 +606,9 @@ def main():
         raise SystemExit("correctness gate evidence is not PASS")
     if "| PASS |" not in disassembly or "FAIL" in disassembly:
         raise SystemExit("disassembly gate evidence is not PASS")
-    write_commands(output_dir, metadata)
+    write_commands(output_dir, metadata, args)
     write_perf_status(output_dir)
-    write_summary(output_dir, contexts, all_cases, metadata, manifest)
+    write_summary(output_dir, contexts, all_cases, metadata, manifest, args)
     write_validation(output_dir, all_cases, manifest)
 
 

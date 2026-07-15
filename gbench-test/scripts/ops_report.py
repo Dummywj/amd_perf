@@ -23,6 +23,8 @@ PATTERN_COLORS = {
     "block_random_4k": "#1d4ed8",
     "uniform_random": "#a16207",
     "contiguous": "#6b21a8",
+    "reuse": "#166534",
+    "once": "#b91c1c",
 }
 LINE_STYLES = {
     "scalar": "8,5",
@@ -63,6 +65,8 @@ def parse_name(run_name):
         variant, implementation = parts[1], parts[2]
     elif operation == "softmax":
         variant, implementation = "softmax", parts[1]
+    elif operation == "fma":
+        variant, implementation = parts[1], parts[2]
     else:
         raise ValueError(f"unknown operation in {run_name!r}")
     return operation, variant, implementation
@@ -97,8 +101,11 @@ def load_cases(path):
         working_set = int(round(rows[0]["working_set_bytes"]))
         inner_passes = int(round(rows[0]["inner_passes"]))
         elem_cycle = [float(row["elem/core_cycle"]) for row in rows]
+        flop_cycle = [float(row.get("flop/core_cycle", 0.0)) for row in rows]
+        fma_rounds = int(round(rows[0].get("fma_rounds", 0)))
+        work_elements = elements * inner_passes * (fma_rounds if operation == "fma" else 1)
         ns_element = [
-            float(row["real_time"]) / (elements * inner_passes) for row in rows
+            float(row["real_time"]) / work_elements for row in rows
         ]
         logical_gbs = [float(row["bytes_per_second"]) / 1e9 for row in rows]
         implementation_id = int(round(rows[0]["implementation_id"]))
@@ -118,8 +125,11 @@ def load_cases(path):
                 "pattern_id": pattern_id,
                 "repetitions": len(rows),
                 "elem_cycle": sample_stats(elem_cycle),
+                "flop_cycle": sample_stats(flop_cycle),
                 "ns_element": sample_stats(ns_element),
                 "logical_gbs": sample_stats(logical_gbs),
+                "fma_rounds": fma_rounds,
+                "work_elements": work_elements,
             }
         )
     cases.sort(
@@ -133,6 +143,8 @@ def load_cases(path):
 
 
 def indexed_simd_name(operation, implementations):
+    if operation == "fma":
+        return "avx512"
     explicit = {
         "gather": "avx512_vgather",
         "scatter": "avx512_vscatter",
@@ -151,6 +163,8 @@ def expected_dense_curves(operation):
         return {(variant, impl) for variant in ("sum", "max") for impl in ("scalar", "avx512")}
     if operation == "softmax":
         return {("softmax", impl) for impl in ("scalar", "avx512")}
+    if operation == "fma":
+        return {(variant, "avx512") for variant in ("reuse", "once")}
     simd = "avx512_vgather" if operation == "gather" else "avx512_vscatter"
     indexed = {
         (variant, impl)
@@ -177,6 +191,8 @@ def validate_dense_cases(cases):
         "block_random_4k": 2,
         "uniform_random": 3,
         "contiguous": 4,
+        "reuse": 0,
+        "once": 1,
     }
     for (variant, implementation), curve in grouped.items():
         curve.sort(key=lambda case: case["elements"])
@@ -195,6 +211,11 @@ def validate_dense_cases(cases):
                 working, logical = 4 * n, 4 * n + 4
             elif operation == "softmax":
                 working, logical = 8 * n, 20 * n
+            elif operation == "fma":
+                expected_rounds = 64 if variant == "reuse" else 1
+                if case["fma_rounds"] != expected_rounds:
+                    raise ValueError(f"{case['run_name']}: FMA round mismatch")
+                working, logical = (4 * n, 8 * n) if variant == "reuse" else (16 * n, 16 * n)
             elif variant == "contiguous":
                 working = logical = 8 * n
             else:
@@ -216,6 +237,7 @@ def fmt_size(value):
 
 def render_markdown(context, cases, exploratory=False, dense=False):
     operation = cases[0]["operation"] if cases else "unknown"
+    display_operation = "FMA" if operation == "fma" else operation.capitalize()
     paired = {}
     for case in cases:
         key = (case["variant"], case["elements"])
@@ -230,7 +252,7 @@ def render_markdown(context, cases, exploratory=False, dense=False):
         )
         lines.extend(
             [
-                f"# EXPLORATORY / NON-FORMAL - {'Dense ' if dense else ''}{operation.capitalize()} FP32",
+                f"# EXPLORATORY / NON-FORMAL - {'Dense ' if dense else ''}{display_operation} FP32",
                 "",
                 source_warning,
                 "",
@@ -239,7 +261,14 @@ def render_markdown(context, cases, exploratory=False, dense=False):
             ]
         )
     else:
-        lines.extend([f"# {operation.capitalize()} FP32 results", ""])
+        lines.extend([f"# {display_operation} FP32 results", ""])
+    if operation == "fma":
+        lines.extend(
+            [
+                "- `elem/core_cycle` counts lane-wise FMA element operations; `flop/core_cycle` is twice this value.",
+                "- `reuse` performs 64 FMA rounds per load/store; `once` performs one `a*b+c` FMA per element.",
+            ]
+        )
     lines.extend([
         f"- Host: `{context.get('host_name', '')}`",
         f"- Date: `{context.get('date', '')}`",
@@ -250,8 +279,16 @@ def render_markdown(context, cases, exploratory=False, dense=False):
         "- `logical GB/s` is derived from frozen logical bytes; it is not measured DRAM traffic.",
         "- Dense indexed/contiguous comparisons use the same N; indexed logical bytes are 12N and contiguous logical bytes are 8N." if dense and operation in ("gather", "scatter") else "",
         "",
-        "| Variant | N | Impl | Reps | Working set | elem/core_cycle median | min | mean | stddev | CV | ns/element median | logical GB/s median | Scalar/AVX speedup | contiguous/indexed-SIMD throughput ratio | Status |",
-        "| --- | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- | --- |",
+        (
+            "| Variant | N | Impl | FMA rounds | Reps | Working set | elem/core_cycle median | flop/core_cycle median | min | mean | stddev | CV | ns/element median | logical GB/s median | Status |"
+            if operation == "fma"
+            else "| Variant | N | Impl | Reps | Working set | elem/core_cycle median | min | mean | stddev | CV | ns/element median | logical GB/s median | Scalar/AVX speedup | contiguous/indexed-SIMD throughput ratio | Status |"
+        ),
+        (
+            "| --- | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |"
+            if operation == "fma"
+            else "| --- | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- | --- |"
+        ),
     ])
     for case in cases:
         pair = paired[(case["variant"], case["elements"])]
@@ -279,27 +316,39 @@ def render_markdown(context, cases, exploratory=False, dense=False):
             )
         ec = case["elem_cycle"]
         status = "UNSTABLE" if ec["cv"] > 0.05 else "stable"
-        lines.append(
-            "| {variant} | {elements} | {implementation} | {repetitions} | {working} | "
-            "{median:.6g} | {minimum:.6g} | {mean:.6g} | {stddev:.3g} | {cv:.2%} | "
-            "{ns:.6g} | {gbs:.6g} | {speedup} | {contiguous_ratio} | {status} |".format(
-                variant=case["variant"],
-                elements=case["elements"],
-                implementation=case["implementation"],
-                repetitions=case["repetitions"],
-                working=fmt_size(case["working_set"]),
-                median=ec["median"],
-                minimum=ec["min"],
-                mean=ec["mean"],
-                stddev=ec["stddev"],
-                cv=ec["cv"],
-                ns=case["ns_element"]["median"],
-                gbs=case["logical_gbs"]["median"],
-                speedup=speedup,
-                contiguous_ratio=contiguous_ratio,
-                status=status,
+        row_values = {
+            "variant": case["variant"],
+            "elements": case["elements"],
+            "implementation": case["implementation"],
+            "fma_rounds": case["fma_rounds"],
+            "repetitions": case["repetitions"],
+            "working": fmt_size(case["working_set"]),
+            "median": ec["median"],
+            "flop": case["flop_cycle"]["median"],
+            "minimum": ec["min"],
+            "mean": ec["mean"],
+            "stddev": ec["stddev"],
+            "cv": ec["cv"],
+            "ns": case["ns_element"]["median"],
+            "gbs": case["logical_gbs"]["median"],
+            "speedup": speedup,
+            "contiguous_ratio": contiguous_ratio,
+            "status": status,
+        }
+        if operation == "fma":
+            lines.append(
+                "| {variant} | {elements} | {implementation} | {fma_rounds} | {repetitions} | {working} | "
+                "{median:.6g} | {flop:.6g} | {minimum:.6g} | {mean:.6g} | {stddev:.3g} | {cv:.2%} | "
+                "{ns:.6g} | {gbs:.6g} | {status} |".format(**row_values)
             )
-        )
+        else:
+            lines.append(
+                "| {variant} | {elements} | {implementation} | {repetitions} | {working} | "
+                "{median:.6g} | {minimum:.6g} | {mean:.6g} | {stddev:.3g} | {cv:.2%} | "
+                "{ns:.6g} | {gbs:.6g} | {speedup} | {contiguous_ratio} | {status} |".format(
+                    **row_values
+                )
+            )
     unstable = [case for case in cases if case["elem_cycle"]["cv"] > 0.05]
     lines.extend(["", "## Stability", ""])
     if dense:
@@ -324,15 +373,20 @@ def render_markdown(context, cases, exploratory=False, dense=False):
 
 def render_svg(context, cases, exploratory=False, dense=False):
     width, height = 1120, 680
-    left, right, top, bottom = 92, 36, (126 if exploratory else 76), 96
+    left, right, top, bottom = 92, 36, 76, 96
     plot_w, plot_h = width - left - right, height - top - bottom
+    plot_center = left + plot_w / 2
     grouped = defaultdict(list)
     for case in cases:
         grouped[(case["variant"], case["implementation"])].append(case)
     for points in grouped.values():
         points.sort(key=lambda case: case["elements"] if dense else case["working_set"])
     all_x = [case["elements"] if dense else case["working_set"] for case in cases]
-    all_y = [case["elem_cycle"]["median"] for case in cases]
+    operation = cases[0]["operation"] if cases else "ops"
+    all_y = [
+        case["flop_cycle"]["median"] if operation == "fma" else case["elem_cycle"]["median"]
+        for case in cases
+    ]
     log_min, log_max = math.log2(min(all_x)), math.log2(max(all_x))
     if log_max <= log_min:
         log_max = log_min + 1.0
@@ -344,34 +398,15 @@ def render_svg(context, cases, exploratory=False, dense=False):
     def yp(value):
         return top + (y_max - value) / y_max * plot_h
 
-    operation = cases[0]["operation"].capitalize() if cases else "Ops"
-    title = (
-        f"EXPLORATORY / NON-FORMAL - {'Dense ' if dense else ''}{operation} FP32"
-        if exploratory
-        else f"{operation} FP32 median throughput"
-    )
+    display_operation = "FMA" if operation == "fma" else operation.capitalize()
+    title = f"{display_operation} FP32"
     output = [
         '<?xml version="1.0" encoding="UTF-8"?>',
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}">',
         '<rect width="100%" height="100%" fill="white"/>',
-        '<style>text{font-family:Arial,sans-serif;fill:#111827}.warning{fill:#991b1b}.grid{stroke:#e5e7eb}.axis{stroke:#111827;stroke-width:1.4}</style>',
-        f'<text class="warning" x="{width / 2}" y="32" text-anchor="middle" font-size="22" font-weight="bold">{html.escape(title)}</text>',
+        '<style>text{font-family:Arial,sans-serif;fill:#111827}.grid{stroke:#e5e7eb}.axis{stroke:#111827;stroke-width:1.4}</style>',
+        f'<text class="title" x="{plot_center}" y="32" text-anchor="middle" font-size="22" font-weight="bold">{html.escape(title)}</text>',
     ]
-    if exploratory:
-        environment_warning = (
-            "New dense exploratory run; external Java/ZGC and CPU contention may affect the environment."
-            if dense
-            else "Formally invalid source batch; external Java/ZGC and CPU contention affected the environment."
-        )
-        output.extend(
-            [
-                f'<text x="{width / 2}" y="57" text-anchor="middle" font-size="13" font-weight="bold">{html.escape(environment_warning)}</text>',
-                f'<text x="{width / 2}" y="78" text-anchor="middle" font-size="12">Relative trends only; no absolute, cross-machine, regression, capacity, limit, or acceptance conclusions.</text>',
-                f'<text x="{width / 2}" y="99" text-anchor="middle" font-size="11">{html.escape(str(context.get("host_name", "")))}</text>',
-            ]
-        )
-    else:
-        output.append(f'<text x="{width / 2}" y="54" text-anchor="middle" font-size="12">{html.escape(str(context.get("host_name", "")))}</text>')
     for tick_index in range(0, 7):
         value = y_max * tick_index / 6
         y = yp(value)
@@ -390,34 +425,44 @@ def render_svg(context, cases, exploratory=False, dense=False):
         [
             f'<line class="axis" x1="{left}" y1="{top}" x2="{left}" y2="{height-bottom}"/>',
             f'<line class="axis" x1="{left}" y1="{height-bottom}" x2="{width-right}" y2="{height-bottom}"/>',
-            f'<text x="{width/2}" y="{height-28}" text-anchor="middle" font-size="14">{"N elements" if dense else "Working set bytes"} (log2)</text>',
-            f'<text x="22" y="{top+plot_h/2}" text-anchor="middle" font-size="14" transform="rotate(-90 22 {top+plot_h/2})">elem/core_cycle median</text>',
+            f'<text x="{plot_center}" y="{height-28}" text-anchor="middle" font-size="14">{"N elements" if dense else "Working set bytes"} (log2)</text>',
+            f'<text x="22" y="{top+plot_h/2}" text-anchor="middle" font-size="14" transform="rotate(-90 22 {top+plot_h/2})">{"flop/core_cycle median" if operation == "fma" else "elem/core_cycle median"}</text>',
         ]
     )
-    legend_x, legend_y = left + 12, top + 18
+    legend_box_width = 260
+    legend_row_height = 18
+    legend_box_height = len(grouped) * legend_row_height + 16
+    legend_x = width - right - legend_box_width - 10
+    legend_y = top + 10
+    legend_output = [
+        f'<g class="legend" data-position="upper-right-inside" transform="translate({legend_x} {legend_y})">',
+        f'<rect width="{legend_box_width}" height="{legend_box_height}" rx="3" fill="#ffffff" fill-opacity="0.92" stroke="#d1d5db"/>',
+    ]
     for index, ((variant, implementation), points) in enumerate(sorted(grouped.items())):
         color = PATTERN_COLORS.get(variant, COLORS[index % len(COLORS)]) if dense else COLORS[index % len(COLORS)]
         dash = LINE_STYLES.get(implementation, "") if dense else ""
         dash_attr = f' stroke-dasharray="{dash}"' if dash else ""
         polyline = " ".join(
-            f"{xp(case['elements'] if dense else case['working_set']):.2f},{yp(case['elem_cycle']['median']):.2f}"
+            f"{xp(case['elements'] if dense else case['working_set']):.2f},{yp(case['flop_cycle']['median'] if operation == 'fma' else case['elem_cycle']['median']):.2f}"
             for case in points
         )
         curve_name = f"{variant}/{implementation}"
         output.append(f'<polyline data-curve="{html.escape(curve_name)}" data-points="{len(points)}" points="{polyline}" fill="none" stroke="{color}" stroke-width="2.2"{dash_attr}/>')
         for case in points:
             unstable = case["elem_cycle"]["cv"] > 0.05
-            anchor = case["elements"] > 0 and case["elements"] & (case["elements"] - 1) == 0
-            if dense and not unstable and not anchor:
+            if not unstable:
                 continue
-            radius = 5 if unstable else 3
-            fill = "#ffffff" if unstable else color
-            stroke_width = 2.5 if unstable else 1
-            marker_class = "unstable" if unstable else "anchor"
-            output.append(f'<circle class="{marker_class}" cx="{xp(case["elements"] if dense else case["working_set"]):.2f}" cy="{yp(case["elem_cycle"]["median"]):.2f}" r="{radius}" fill="{fill}" stroke="{color}" stroke-width="{stroke_width}"/>')
+            radius = 5
+            fill = "#ffffff"
+            stroke_width = 2.5
+            marker_class = "unstable"
+            output.append(f'<circle class="{marker_class}" cx="{xp(case["elements"] if dense else case["working_set"]):.2f}" cy="{yp(case["flop_cycle"]["median"] if operation == "fma" else case["elem_cycle"]["median"]):.2f}" r="{radius}" fill="{fill}" stroke="{color}" stroke-width="{stroke_width}"/>')
         label = f"{variant} {implementation}"
-        output.append(f'<line x1="{legend_x}" y1="{legend_y+index*19}" x2="{legend_x+22}" y2="{legend_y+index*19}" stroke="{color}" stroke-width="2.2"{dash_attr}/>')
-        output.append(f'<text x="{legend_x+29}" y="{legend_y+4+index*19}" font-size="11">{html.escape(label)}</text>')
+        legend_row_y = 12 + index * legend_row_height
+        legend_output.append(f'<line x1="10" y1="{legend_row_y}" x2="32" y2="{legend_row_y}" stroke="{color}" stroke-width="2.2"{dash_attr}/>')
+        legend_output.append(f'<text x="39" y="{legend_row_y+4}" font-size="11">{html.escape(label)}</text>')
+    legend_output.append("</g>")
+    output.extend(legend_output)
     output.append("</svg>")
     return "\n".join(output) + "\n"
 

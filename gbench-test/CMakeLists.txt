@@ -89,6 +89,7 @@ add_ops_benchmark(reduce_fp32_bench benchmarks/reduce_bench.cpp)
 add_ops_benchmark(gather_fp32_bench benchmarks/gather_bench.cpp)
 add_ops_benchmark(scatter_fp32_bench benchmarks/scatter_bench.cpp)
 add_ops_benchmark(softmax_fp32_bench benchmarks/softmax_bench.cpp)
+add_ops_benchmark(fma_fp32_bench benchmarks/fma_bench.cpp)
 
 add_executable(ops_fp32_correctness benchmarks/ops_correctness.cpp)
 target_link_libraries(ops_fp32_correctness PRIVATE ops_common)

@@ -91,6 +91,27 @@ add_ops_benchmark(scatter_fp32_bench benchmarks/scatter_bench.cpp)
 add_ops_benchmark(softmax_fp32_bench benchmarks/softmax_bench.cpp)
 add_ops_benchmark(fma_fp32_bench benchmarks/fma_bench.cpp)
 
+add_library(fma_bf16_common STATIC benchmarks/fma_bf16.cpp)
+target_include_directories(fma_bf16_common PUBLIC
+  "${CMAKE_CURRENT_LIST_DIR}/include"
+)
+target_link_libraries(fma_bf16_common PUBLIC ops_common)
+target_compile_options(fma_bf16_common PRIVATE
+  $<$<CXX_COMPILER_ID:GNU,Clang>:-O3 -march=native -mavx512bf16 -Wall -Wextra -Wpedantic>
+)
+
+add_executable(fma_bf16_bench benchmarks/fma_bf16_bench.cpp)
+target_link_libraries(fma_bf16_bench PRIVATE fma_bf16_common)
+target_compile_options(fma_bf16_bench PRIVATE
+  $<$<CXX_COMPILER_ID:GNU,Clang>:-O3 -march=native -Wall -Wextra -Wpedantic>
+)
+
+add_executable(fma_bf16_correctness benchmarks/fma_bf16_correctness.cpp)
+target_link_libraries(fma_bf16_correctness PRIVATE fma_bf16_common)
+target_compile_options(fma_bf16_correctness PRIVATE
+  $<$<CXX_COMPILER_ID:GNU,Clang>:-O3 -march=native -Wall -Wextra -Wpedantic>
+)
+
 add_executable(ops_fp32_correctness benchmarks/ops_correctness.cpp)
 target_link_libraries(ops_fp32_correctness PRIVATE ops_common)
 target_compile_options(ops_fp32_correctness PRIVATE

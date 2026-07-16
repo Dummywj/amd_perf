@@ -32,11 +32,22 @@ LINE_STYLES = {
     "avx512_vgather": "",
     "avx512_vscatter": "",
     "avx512_load_store": "3,3,10,3",
+    "avx512_bf16_dot": "",
 }
+
+FMA_OPERATIONS = ("fma", "fma_bf16")
+
+
+def is_fma(operation):
+    return operation in FMA_OPERATIONS
+
+
+def data_type(operation):
+    return "BF16" if operation == "fma_bf16" else "FP32"
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Summarize and plot FP32 ops results")
+    parser = argparse.ArgumentParser(description="Summarize and plot operation results")
     parser.add_argument("input_json")
     parser.add_argument("output_md")
     parser.add_argument("output_svg")
@@ -65,7 +76,7 @@ def parse_name(run_name):
         variant, implementation = parts[1], parts[2]
     elif operation == "softmax":
         variant, implementation = "softmax", parts[1]
-    elif operation == "fma":
+    elif is_fma(operation):
         variant, implementation = parts[1], parts[2]
     else:
         raise ValueError(f"unknown operation in {run_name!r}")
@@ -102,8 +113,9 @@ def load_cases(path):
         inner_passes = int(round(rows[0]["inner_passes"]))
         elem_cycle = [float(row["elem/core_cycle"]) for row in rows]
         flop_cycle = [float(row.get("flop/core_cycle", 0.0)) for row in rows]
+        dpbf16_cycle = [float(row.get("dpbf16_instr/core_cycle", 0.0)) for row in rows]
         fma_rounds = int(round(rows[0].get("fma_rounds", 0)))
-        work_elements = elements * inner_passes * (fma_rounds if operation == "fma" else 1)
+        work_elements = elements * inner_passes * (fma_rounds if is_fma(operation) else 1)
         ns_element = [
             float(row["real_time"]) / work_elements for row in rows
         ]
@@ -126,6 +138,7 @@ def load_cases(path):
                 "repetitions": len(rows),
                 "elem_cycle": sample_stats(elem_cycle),
                 "flop_cycle": sample_stats(flop_cycle),
+                "dpbf16_cycle": sample_stats(dpbf16_cycle),
                 "ns_element": sample_stats(ns_element),
                 "logical_gbs": sample_stats(logical_gbs),
                 "fma_rounds": fma_rounds,
@@ -143,8 +156,8 @@ def load_cases(path):
 
 
 def indexed_simd_name(operation, implementations):
-    if operation == "fma":
-        return "avx512"
+    if is_fma(operation):
+        return "avx512_bf16_dot" if operation == "fma_bf16" else "avx512"
     explicit = {
         "gather": "avx512_vgather",
         "scatter": "avx512_vscatter",
@@ -165,6 +178,8 @@ def expected_dense_curves(operation):
         return {("softmax", impl) for impl in ("scalar", "avx512")}
     if operation == "fma":
         return {(variant, "avx512") for variant in ("reuse", "once")}
+    if operation == "fma_bf16":
+        return {(variant, "avx512_bf16_dot") for variant in ("reuse", "once")}
     simd = "avx512_vgather" if operation == "gather" else "avx512_vscatter"
     indexed = {
         (variant, impl)
@@ -211,11 +226,14 @@ def validate_dense_cases(cases):
                 working, logical = 4 * n, 4 * n + 4
             elif operation == "softmax":
                 working, logical = 8 * n, 20 * n
-            elif operation == "fma":
+            elif is_fma(operation):
                 expected_rounds = 64 if variant == "reuse" else 1
                 if case["fma_rounds"] != expected_rounds:
                     raise ValueError(f"{case['run_name']}: FMA round mismatch")
-                working, logical = (4 * n, 8 * n) if variant == "reuse" else (16 * n, 16 * n)
+                if operation == "fma_bf16":
+                    working = logical = 8 * n
+                else:
+                    working, logical = (4 * n, 8 * n) if variant == "reuse" else (16 * n, 16 * n)
             elif variant == "contiguous":
                 working = logical = 8 * n
             else:
@@ -237,7 +255,8 @@ def fmt_size(value):
 
 def render_markdown(context, cases, exploratory=False, dense=False):
     operation = cases[0]["operation"] if cases else "unknown"
-    display_operation = "FMA" if operation == "fma" else operation.capitalize()
+    display_operation = "FMA" if is_fma(operation) else operation.capitalize()
+    dtype = data_type(operation)
     paired = {}
     for case in cases:
         key = (case["variant"], case["elements"])
@@ -252,7 +271,7 @@ def render_markdown(context, cases, exploratory=False, dense=False):
         )
         lines.extend(
             [
-                f"# EXPLORATORY / NON-FORMAL - {'Dense ' if dense else ''}{display_operation} FP32",
+                f"# EXPLORATORY / NON-FORMAL - {'Dense ' if dense else ''}{display_operation} {dtype}",
                 "",
                 source_warning,
                 "",
@@ -261,14 +280,16 @@ def render_markdown(context, cases, exploratory=False, dense=False):
             ]
         )
     else:
-        lines.extend([f"# {display_operation} FP32 results", ""])
-    if operation == "fma":
+        lines.extend([f"# {display_operation} {dtype} results", ""])
+    if is_fma(operation):
         lines.extend(
             [
-                "- `elem/core_cycle` counts lane-wise FMA element operations; `flop/core_cycle` is twice this value.",
-                "- `reuse` performs 64 FMA rounds per load/store; `once` performs one `a*b+c` FMA per element.",
+                "- `elem/core_cycle` counts input element operations; `flop/core_cycle` is twice this value.",
+                "- `reuse` performs 64 FMA rounds per load/store; `once` performs one round.",
             ]
         )
+    if operation == "fma_bf16":
+        lines.append("- Each native `vdpbf16ps` consumes 32 BF16 values from each source, forms 16 dot products, and accumulates 16 FP32 results; `dpbf16_instr/core_cycle` reports instruction throughput.")
     lines.extend([
         f"- Host: `{context.get('host_name', '')}`",
         f"- Date: `{context.get('date', '')}`",
@@ -280,14 +301,22 @@ def render_markdown(context, cases, exploratory=False, dense=False):
         "- Dense indexed/contiguous comparisons use the same N; indexed logical bytes are 12N and contiguous logical bytes are 8N." if dense and operation in ("gather", "scatter") else "",
         "",
         (
-            "| Variant | N | Impl | FMA rounds | Reps | Working set | elem/core_cycle median | flop/core_cycle median | min | mean | stddev | CV | ns/element median | logical GB/s median | Status |"
-            if operation == "fma"
-            else "| Variant | N | Impl | Reps | Working set | elem/core_cycle median | min | mean | stddev | CV | ns/element median | logical GB/s median | Scalar/AVX speedup | contiguous/indexed-SIMD throughput ratio | Status |"
+            "| Variant | N | Impl | FMA rounds | Reps | Working set | elem/core_cycle median | flop/core_cycle median | dpbf16_instr/core_cycle median | min | mean | stddev | CV | ns/element median | logical GB/s median | Status |"
+            if operation == "fma_bf16"
+            else (
+                "| Variant | N | Impl | FMA rounds | Reps | Working set | elem/core_cycle median | flop/core_cycle median | min | mean | stddev | CV | ns/element median | logical GB/s median | Status |"
+                if operation == "fma"
+                else "| Variant | N | Impl | Reps | Working set | elem/core_cycle median | min | mean | stddev | CV | ns/element median | logical GB/s median | Scalar/AVX speedup | contiguous/indexed-SIMD throughput ratio | Status |"
+            )
         ),
         (
-            "| --- | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |"
-            if operation == "fma"
-            else "| --- | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- | --- |"
+            "| --- | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |"
+            if operation == "fma_bf16"
+            else (
+                "| --- | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |"
+                if operation == "fma"
+                else "| --- | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- | --- |"
+            )
         ),
     ])
     for case in cases:
@@ -325,6 +354,7 @@ def render_markdown(context, cases, exploratory=False, dense=False):
             "working": fmt_size(case["working_set"]),
             "median": ec["median"],
             "flop": case["flop_cycle"]["median"],
+            "dpbf16": case["dpbf16_cycle"]["median"],
             "minimum": ec["min"],
             "mean": ec["mean"],
             "stddev": ec["stddev"],
@@ -335,7 +365,13 @@ def render_markdown(context, cases, exploratory=False, dense=False):
             "contiguous_ratio": contiguous_ratio,
             "status": status,
         }
-        if operation == "fma":
+        if operation == "fma_bf16":
+            lines.append(
+                "| {variant} | {elements} | {implementation} | {fma_rounds} | {repetitions} | {working} | "
+                "{median:.6g} | {flop:.6g} | {dpbf16:.6g} | {minimum:.6g} | {mean:.6g} | {stddev:.3g} | {cv:.2%} | "
+                "{ns:.6g} | {gbs:.6g} | {status} |".format(**row_values)
+            )
+        elif operation == "fma":
             lines.append(
                 "| {variant} | {elements} | {implementation} | {fma_rounds} | {repetitions} | {working} | "
                 "{median:.6g} | {flop:.6g} | {minimum:.6g} | {mean:.6g} | {stddev:.3g} | {cv:.2%} | "
@@ -384,7 +420,7 @@ def render_svg(context, cases, exploratory=False, dense=False):
     all_x = [case["elements"] if dense else case["working_set"] for case in cases]
     operation = cases[0]["operation"] if cases else "ops"
     all_y = [
-        case["flop_cycle"]["median"] if operation == "fma" else case["elem_cycle"]["median"]
+        case["flop_cycle"]["median"] if is_fma(operation) else case["elem_cycle"]["median"]
         for case in cases
     ]
     log_min, log_max = math.log2(min(all_x)), math.log2(max(all_x))
@@ -398,8 +434,8 @@ def render_svg(context, cases, exploratory=False, dense=False):
     def yp(value):
         return top + (y_max - value) / y_max * plot_h
 
-    display_operation = "FMA" if operation == "fma" else operation.capitalize()
-    title = f"{display_operation} FP32"
+    display_operation = "FMA" if is_fma(operation) else operation.capitalize()
+    title = f"{display_operation} {data_type(operation)}"
     output = [
         '<?xml version="1.0" encoding="UTF-8"?>',
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}">',
@@ -426,7 +462,7 @@ def render_svg(context, cases, exploratory=False, dense=False):
             f'<line class="axis" x1="{left}" y1="{top}" x2="{left}" y2="{height-bottom}"/>',
             f'<line class="axis" x1="{left}" y1="{height-bottom}" x2="{width-right}" y2="{height-bottom}"/>',
             f'<text x="{plot_center}" y="{height-28}" text-anchor="middle" font-size="14">{"N elements" if dense else "Working set bytes"} (log2)</text>',
-            f'<text x="22" y="{top+plot_h/2}" text-anchor="middle" font-size="14" transform="rotate(-90 22 {top+plot_h/2})">{"flop/core_cycle median" if operation == "fma" else "elem/core_cycle median"}</text>',
+            f'<text x="22" y="{top+plot_h/2}" text-anchor="middle" font-size="14" transform="rotate(-90 22 {top+plot_h/2})">{"flop/core_cycle median" if is_fma(operation) else "elem/core_cycle median"}</text>',
         ]
     )
     legend_box_width = 260
@@ -443,7 +479,7 @@ def render_svg(context, cases, exploratory=False, dense=False):
         dash = LINE_STYLES.get(implementation, "") if dense else ""
         dash_attr = f' stroke-dasharray="{dash}"' if dash else ""
         polyline = " ".join(
-            f"{xp(case['elements'] if dense else case['working_set']):.2f},{yp(case['flop_cycle']['median'] if operation == 'fma' else case['elem_cycle']['median']):.2f}"
+            f"{xp(case['elements'] if dense else case['working_set']):.2f},{yp(case['flop_cycle']['median'] if is_fma(operation) else case['elem_cycle']['median']):.2f}"
             for case in points
         )
         curve_name = f"{variant}/{implementation}"
@@ -456,7 +492,7 @@ def render_svg(context, cases, exploratory=False, dense=False):
             fill = "#ffffff"
             stroke_width = 2.5
             marker_class = "unstable"
-            output.append(f'<circle class="{marker_class}" cx="{xp(case["elements"] if dense else case["working_set"]):.2f}" cy="{yp(case["flop_cycle"]["median"] if operation == "fma" else case["elem_cycle"]["median"]):.2f}" r="{radius}" fill="{fill}" stroke="{color}" stroke-width="{stroke_width}"/>')
+            output.append(f'<circle class="{marker_class}" cx="{xp(case["elements"] if dense else case["working_set"]):.2f}" cy="{yp(case["flop_cycle"]["median"] if is_fma(operation) else case["elem_cycle"]["median"]):.2f}" r="{radius}" fill="{fill}" stroke="{color}" stroke-width="{stroke_width}"/>')
         label = f"{variant} {implementation}"
         legend_row_y = 12 + index * legend_row_height
         legend_output.append(f'<line x1="10" y1="{legend_row_y}" x2="32" y2="{legend_row_y}" stroke="{color}" stroke-width="2.2"{dash_attr}/>')

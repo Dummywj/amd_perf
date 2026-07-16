@@ -37,6 +37,24 @@ FMA 包含两条 AVX-512 曲线：`reuse` 每次加载后对每个元素执行 6
 用于观察低算术强度下的流式访存表现。FMA 报告中的 `flop/core_cycle`
 是主要计算吞吐指标。
 
+### BF16 FMA
+
+BF16 只增加原生 FMA 测试，不扩展 Reduce、Softmax、Gather 或 Scatter。
+测试使用 AVX-512 BF16 的 `vdpbf16ps`：每条指令读取两组各 32 个 BF16
+输入，将相邻两个 BF16 乘积相加，并累加到 16 个 FP32 结果中。
+
+`fma-bf16` 与 FP32 FMA 使用相同的 113 个尺寸，也包含两条曲线：
+
+- `reuse/avx512_bf16_dot`：A、B 和 FP32 accumulator 保持在寄存器中执行
+  64 轮 dot-product FMA，使用 8 个独立 accumulator 挖掘计算吞吐。
+- `once/avx512_bf16_dot`：每个 BF16 输入元素只参与一轮 dot-product FMA，
+  用于观察单次使用时的访存表现。
+
+这里的 `N` 是 A 和 B 各自的 BF16 元素数，输出包含 `N/2` 个 FP32 元素。
+两条曲线的 working set 和 logical bytes 均为 `8N`。主指标是
+`flop/core_cycle`；报告也给出 `dpbf16_instr/core_cycle`。运行服务器必须支持
+`avx512_bf16`，否则正确性程序和 benchmark 会明确拒绝执行。
+
 在独立构建目录中编译所有内核和正确性门禁程序：
 
 ```bash
@@ -72,7 +90,8 @@ make run \
 | Gather | `gather-fp32` | `gather_fp32.json`、`gather_fp32.md`、`gather_fp32.svg` |
 | Scatter | `scatter-fp32` | `scatter_fp32.json`、`scatter_fp32.md`、`scatter_fp32.svg` |
 | Softmax | `softmax-fp32` | `softmax_fp32.json`、`softmax_fp32.md`、`softmax_fp32.svg` |
-| FMA | `fma-fp32` | `fma_fp32.json`、`fma_fp32.md`、`fma_fp32.svg` |
+| FMA FP32 | `fma-fp32` | `fma_fp32.json`、`fma_fp32.md`、`fma_fp32.svg` |
+| FMA BF16 | `fma-bf16` | `fma_bf16.json`、`fma_bf16.md`、`fma_bf16.svg` |
 
 例如只运行 FMA：
 
@@ -89,6 +108,28 @@ make run \
 依赖全部五个算子的综合 `summary.md`、`validation.md` 和 `provenance.json`。
 `make run` 不会像完整套件脚本一样拒绝覆盖已有目录，因此每次应指定新的
 `RESULTS_DIR`。
+
+BF16 FMA 的非计时门禁包含数值正确性、226 个完整用例的注册校验，以及
+`vdpbf16ps` 反汇编校验：
+
+```bash
+make fma-bf16-gates BUILD_DIR=build-ops-release CONFIG=Release JOBS=16
+```
+
+门禁通过后，单独运行完整 BF16 FMA 密集测试并生成 JSON、Markdown 和 SVG：
+
+```bash
+make run \
+  PAYLOAD=fma-bf16 \
+  BUILD_DIR=build-ops-release \
+  JOBS=16 \
+  CPU=8 \
+  NUMA_NODE=0 \
+  RESULTS_DIR=results/fma_bf16_$(date +%Y%m%d-%H%M%S)
+```
+
+该命令执行 2 条曲线、每条 113 个尺寸、每个用例 7 次重复。BF16 FMA
+保持为独立 payload，不会加入 `make ops-dense` 的五算子 FP32 批次。
 
 运行完整的探索性密集测试，包括构建、语义门禁、五个算子、图表生成、
 完整性校验和综合汇总：

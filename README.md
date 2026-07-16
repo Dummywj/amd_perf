@@ -37,6 +37,17 @@ make
 该命令编译并运行一个简短的 FP32 FMA 测试。构建产物和结果默认位于
 `gbench-test/build` 与 `gbench-test/results`。
 
+如果 SLEEF 报错 `Please specify CMAKE_INSTALL_PREFIX`，请显式配置安装路径后
+重新执行：
+
+```bash
+cmake -S gbench-test -B gbench-test/build \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_INSTALL_PREFIX="$PWD/gbench-test/build/install"
+
+make
+```
+
 ### 4. 构建全部算子
 
 ```bash

@@ -3,3 +3,6 @@
 	url = https://github.com/google/benchmark.git
 	shallow = true
 
+[submodule "third_party/softmax_sim"]
+	path = third_party/softmax_sim
+	url = https://github.com/shinezyy/softmax_sim.git

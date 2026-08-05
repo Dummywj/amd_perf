@@ -1,0 +1,225 @@
+schema_version: 2
+profile_id: amd-zen4-epyc-9684x
+profile_status: draft
+description: >-
+  Cycle-level profile for straight-line AVX-512 kernels used in LLM inference
+  on AMD EPYC 9684X. A value of "measure" must be calibrated before use.
+
+cpu:
+  vendor: AuthenticAMD
+  family: "19h"
+  model: "11h"
+  stepping: "2"
+  microarchitecture: zen4
+  product_names:
+    - AMD EPYC 9684X 96-Core Processor
+
+isa:
+  required_features:
+    - avx2
+    - fma
+    - avx512f
+    - avx512dq
+    - avx512bw
+    - avx512vl
+    - avx512_bf16
+    - avx512_vnni
+  zmm_registers: 32
+  max_vector_bits: 512
+
+pipeline:
+  dispatch_macro_ops_per_cycle: 6
+  retire_macro_ops_per_cycle: measure
+  rob_entries: 320
+  vector_scheduler_entries: 64
+  load_queue_entries: measure
+  store_queue_entries: measure
+
+resources:
+  vector-fp:
+    kind: vector_fp
+    capacity: 4
+    width_bits: 256
+    notes: >-
+      Aggregate Zen 4 FP/vector execution pipes. Each opcode still needs a
+      measured eligibility set; capacity 4 does not mean every opcode uses all pipes.
+  vector-integer:
+    kind: vector_integer
+    capacity: measure
+    width_bits: 256
+  shuffle:
+    kind: shuffle
+    capacity: measure
+    width_bits: 256
+    notes: Only basic permute/reduction support is in scope.
+  conversion:
+    kind: conversion
+    capacity: measure
+    width_bits: 256
+  address-generation:
+    kind: address_generation
+    capacity: 3
+  load-data:
+    kind: load_data
+    capacity: measure
+    bytes_per_cycle: measure
+  store-data:
+    kind: store_data
+    capacity: 2
+    bytes_per_cycle: measure
+
+recipes:
+  "vaddps:zmm,zmm,zmm":
+    required_features:
+      - avx512f
+    decoded_macro_ops: 1
+    retire_macro_ops: 1
+    vector_decomposition:
+      parts: 2
+      part_width_bits: 256
+      part_issue_gap_cycles: 1
+    uops:
+      - id: add-part-0
+        kind: vector_fp
+        latency_cycles: measure
+        issue_interval_cycles: measure
+        resource_choices:
+          - vector-fp
+        resource_occupancy_cycles: measure
+        part_index: 0
+      - id: add-part-1
+        kind: vector_fp
+        latency_cycles: measure
+        issue_interval_cycles: measure
+        resource_choices:
+          - vector-fp
+        resource_occupancy_cycles: measure
+        part_index: 1
+    evidence:
+      - amd-zen4-sog
+      - amd-epyc-9004-whitepaper
+      - provisional-vaddps-model
+    notes: >-
+      The two uops are an effective simulator decomposition, not a claim about
+      the exact hidden hardware uop count. Latency, throughput, occupancy and
+      opcode-specific pipe eligibility require calibration.
+
+memory:
+  cache_line_bytes: 64
+  levels:
+    l1d:
+      size_bytes: 32768
+      ways: 8
+      latency_cycles: measure
+      read_bytes_per_cycle: measure
+      write_bytes_per_cycle: measure
+      max_outstanding_misses: measure
+      shared_by_cores: 1
+    l2:
+      size_bytes: 1048576
+      ways: 8
+      latency_cycles: measure
+      read_bytes_per_cycle: measure
+      write_bytes_per_cycle: measure
+      max_outstanding_misses: measure
+      shared_by_cores: 1
+    l3-ccd:
+      size_bytes: 100663296
+      ways: 16
+      latency_cycles: measure
+      read_bytes_per_cycle: measure
+      write_bytes_per_cycle: measure
+      max_outstanding_misses: measure
+      shared_by_cores: 8
+      notes: 96 MiB per CCD on this EPYC 9684X host with 3D V-Cache.
+  dram:
+    latency_cycles: measure
+    read_bytes_per_cycle: measure
+    write_bytes_per_cycle: measure
+    max_outstanding_requests: measure
+    notes: Values are effective single-core, NUMA-local cycle parameters.
+
+metadata:
+  created_at: "2026-08-05T11:49:44+08:00"
+  last_calibrated_at: null
+  simulator_min_version: "0.2.0-dev"
+  sources:
+    - id: amd-zen4-sog
+      kind: vendor_document
+      title: Software Optimization Guide for AMD Family 19h Processors
+      uri: https://www.amd.com/content/dam/amd/en/documents/processor-tech-docs/software-optimization-guides/57647.zip
+      accessed_on: "2026-08-05"
+      notes: >-
+        Zen 4 dispatch width, reorder capacity, scheduler organization and
+        execution-pipe organization.
+    - id: amd-epyc-9004-whitepaper
+      kind: vendor_document
+      title: 4th Gen AMD EPYC Processor Architecture White Paper
+      uri: https://www.amd.com/content/dam/amd/en/documents/products/epyc/4th-gen-amd-epyc-processor-architecture-whitepaper.pdf
+      accessed_on: "2026-08-05"
+      notes: >-
+        Zen 4 cache organization and two-cycle execution of 512-bit AVX data
+        on internal 256-bit data paths.
+    - id: local-cpu-info
+      kind: measurement
+      title: Target Host CPU Inventory
+      uri: ../../docs/cpu-info.md
+      accessed_on: "2026-08-05"
+      command: lscpu
+    - id: local-cache-sysfs
+      kind: measurement
+      title: Target Host Linux Cache Topology
+      uri: /sys/devices/system/cpu/cpu0/cache/
+      accessed_on: "2026-08-05"
+      command: >-
+        read cpu0 cache level, type, size, line size, ways and shared_cpu_list
+    - id: provisional-vaddps-model
+      kind: assumption
+      title: Provisional Zen 4 VADDPS Simulator Decomposition
+      accessed_on: "2026-08-05"
+      notes: >-
+        Represents the documented two-part datapath as two effective simulator
+        uops; physical uop count and exact pipe eligibility remain unknown.
+  notes: >-
+    This profile intentionally omits masks, gathers/scatters, slide-like
+    operations, branch prediction, detailed frontend state, TLB, prefetch state
+    machines and frequency. Missing recipes and required "measure" values are
+    hard errors, not defaults.
+
+evidence:
+  - parameter: cpu
+    sources: [local-cpu-info]
+    confidence: high
+  - parameter: isa
+    sources: [local-cpu-info, amd-epyc-9004-whitepaper]
+    confidence: high
+  - parameter: pipeline.dispatch_macro_ops_per_cycle
+    sources: [amd-zen4-sog]
+    confidence: high
+  - parameter: pipeline.rob_entries
+    sources: [amd-zen4-sog]
+    confidence: high
+    notes: 320 macro-ops without SMT; the profile assumes the sibling thread is idle.
+  - parameter: pipeline.vector_scheduler_entries
+    sources: [amd-zen4-sog]
+    confidence: high
+    notes: Aggregate of two partitioned 32-entry FP schedulers.
+  - parameter: resources.vector-fp
+    sources: [amd-zen4-sog, amd-epyc-9004-whitepaper]
+    confidence: medium
+    notes: Four aggregate pipes; opcode-specific eligibility is not implied.
+  - parameter: resources.address-generation.capacity
+    sources: [amd-zen4-sog]
+    confidence: high
+  - parameter: resources.store-data.capacity
+    sources: [amd-zen4-sog]
+    confidence: high
+  - parameter: recipes.vaddps:zmm,zmm,zmm.vector_decomposition
+    sources: [amd-zen4-sog, amd-epyc-9004-whitepaper]
+    confidence: high
+  - parameter: memory.cache_line_bytes
+    sources: [local-cache-sysfs]
+    confidence: high
+  - parameter: memory.levels
+    sources: [local-cache-sysfs, amd-epyc-9004-whitepaper]
+    confidence: high

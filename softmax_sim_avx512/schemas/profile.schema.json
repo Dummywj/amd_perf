@@ -1,0 +1,542 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Dummywj/amd_perf/blob/master/softmax_sim_avx512/schemas/profile.schema.json",
+  "title": "Vector Inference Microarchitecture Profile",
+  "description": "Cycle-level profile for straight-line vector kernels used in LLM inference. This MVP intentionally excludes masks, complex control flow, TLB and detailed prefetch state.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "profile_id",
+    "profile_status",
+    "cpu",
+    "isa",
+    "pipeline",
+    "resources",
+    "recipes",
+    "memory",
+    "metadata",
+    "evidence"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 2
+    },
+    "profile_id": {
+      "$ref": "#/$defs/identifier"
+    },
+    "profile_status": {
+      "type": "string",
+      "enum": ["draft", "calibrated", "released"]
+    },
+    "description": {
+      "type": "string"
+    },
+    "cpu": {
+      "$ref": "#/$defs/cpu"
+    },
+    "isa": {
+      "$ref": "#/$defs/isa"
+    },
+    "pipeline": {
+      "$ref": "#/$defs/pipeline"
+    },
+    "resources": {
+      "type": "object",
+      "description": "Execution resources referenced by recipe uops.",
+      "minProperties": 1,
+      "propertyNames": {
+        "$ref": "#/$defs/identifier"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/execution_resource"
+      }
+    },
+    "recipes": {
+      "type": "object",
+      "description": "Mappings from canonical instruction forms to effective simulator uops. These uops need not equal undocumented physical uops.",
+      "minProperties": 1,
+      "propertyNames": {
+        "type": "string",
+        "minLength": 1
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/instruction_recipe"
+      }
+    },
+    "memory": {
+      "$ref": "#/$defs/memory"
+    },
+    "metadata": {
+      "$ref": "#/$defs/metadata"
+    },
+    "evidence": {
+      "type": "array",
+      "description": "Centralized provenance for known or estimated profile values.",
+      "items": {
+        "$ref": "#/$defs/evidence"
+      }
+    }
+  },
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._-]*$"
+    },
+    "confidence": {
+      "type": "string",
+      "enum": ["low", "medium", "high"]
+    },
+    "number_or_measure": {
+      "oneOf": [
+        {
+          "type": "number",
+          "minimum": 0
+        },
+        {
+          "const": "measure"
+        }
+      ]
+    },
+    "positive_number_or_measure": {
+      "oneOf": [
+        {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        {
+          "const": "measure"
+        }
+      ]
+    },
+    "positive_integer_or_measure": {
+      "oneOf": [
+        {
+          "type": "integer",
+          "minimum": 1
+        },
+        {
+          "const": "measure"
+        }
+      ]
+    },
+    "cpu": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["vendor", "family", "model", "stepping", "microarchitecture"],
+      "properties": {
+        "vendor": {
+          "type": "string",
+          "minLength": 1
+        },
+        "family": {
+          "type": "string",
+          "minLength": 1
+        },
+        "model": {
+          "type": "string",
+          "minLength": 1
+        },
+        "stepping": {
+          "type": "string",
+          "minLength": 1
+        },
+        "microarchitecture": {
+          "$ref": "#/$defs/identifier"
+        },
+        "product_names": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        }
+      }
+    },
+    "isa": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["required_features", "zmm_registers", "max_vector_bits"],
+      "properties": {
+        "required_features": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/identifier"
+          }
+        },
+        "zmm_registers": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_vector_bits": {
+          "type": "integer",
+          "enum": [128, 256, 512]
+        }
+      }
+    },
+    "pipeline": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "dispatch_macro_ops_per_cycle",
+        "retire_macro_ops_per_cycle",
+        "rob_entries",
+        "vector_scheduler_entries",
+        "load_queue_entries",
+        "store_queue_entries"
+      ],
+      "properties": {
+        "dispatch_macro_ops_per_cycle": {
+          "$ref": "#/$defs/positive_number_or_measure"
+        },
+        "retire_macro_ops_per_cycle": {
+          "$ref": "#/$defs/positive_number_or_measure"
+        },
+        "rob_entries": {
+          "$ref": "#/$defs/positive_integer_or_measure"
+        },
+        "vector_scheduler_entries": {
+          "$ref": "#/$defs/positive_integer_or_measure"
+        },
+        "load_queue_entries": {
+          "$ref": "#/$defs/positive_integer_or_measure"
+        },
+        "store_queue_entries": {
+          "$ref": "#/$defs/positive_integer_or_measure"
+        }
+      }
+    },
+    "resource_kind": {
+      "type": "string",
+      "enum": [
+        "vector_fp",
+        "vector_integer",
+        "conversion",
+        "shuffle",
+        "address_generation",
+        "load_data",
+        "store_data"
+      ]
+    },
+    "execution_resource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "capacity"],
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/resource_kind"
+        },
+        "capacity": {
+          "$ref": "#/$defs/positive_integer_or_measure"
+        },
+        "width_bits": {
+          "$ref": "#/$defs/positive_integer_or_measure"
+        },
+        "bytes_per_cycle": {
+          "$ref": "#/$defs/positive_number_or_measure"
+        },
+        "notes": {
+          "type": "string"
+        }
+      }
+    },
+    "instruction_recipe": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "required_features",
+        "decoded_macro_ops",
+        "retire_macro_ops",
+        "uops"
+      ],
+      "properties": {
+        "required_features": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/identifier"
+          }
+        },
+        "decoded_macro_ops": {
+          "$ref": "#/$defs/positive_integer_or_measure"
+        },
+        "retire_macro_ops": {
+          "$ref": "#/$defs/positive_integer_or_measure"
+        },
+        "vector_decomposition": {
+          "$ref": "#/$defs/vector_decomposition"
+        },
+        "uops": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/uop"
+          }
+        },
+        "evidence": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/identifier"
+          }
+        },
+        "notes": {
+          "type": "string"
+        }
+      }
+    },
+    "vector_decomposition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["parts", "part_width_bits", "part_issue_gap_cycles"],
+      "properties": {
+        "parts": {
+          "$ref": "#/$defs/positive_integer_or_measure"
+        },
+        "part_width_bits": {
+          "$ref": "#/$defs/positive_integer_or_measure"
+        },
+        "part_issue_gap_cycles": {
+          "$ref": "#/$defs/number_or_measure"
+        }
+      }
+    },
+    "uop": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "latency_cycles",
+        "issue_interval_cycles",
+        "resource_choices",
+        "resource_occupancy_cycles"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "kind": {
+          "$ref": "#/$defs/resource_kind"
+        },
+        "latency_cycles": {
+          "$ref": "#/$defs/number_or_measure"
+        },
+        "issue_interval_cycles": {
+          "$ref": "#/$defs/positive_number_or_measure"
+        },
+        "resource_choices": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/identifier"
+          }
+        },
+        "resource_occupancy_cycles": {
+          "$ref": "#/$defs/positive_number_or_measure"
+        },
+        "depends_on": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/identifier"
+          }
+        },
+        "part_index": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "notes": {
+          "type": "string"
+        }
+      }
+    },
+    "memory": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["cache_line_bytes", "levels", "dram"],
+      "properties": {
+        "cache_line_bytes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "levels": {
+          "type": "object",
+          "minProperties": 1,
+          "propertyNames": {
+            "$ref": "#/$defs/identifier"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/cache_level"
+          }
+        },
+        "dram": {
+          "$ref": "#/$defs/dram"
+        }
+      }
+    },
+    "cache_level": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "size_bytes",
+        "ways",
+        "latency_cycles",
+        "read_bytes_per_cycle",
+        "write_bytes_per_cycle",
+        "max_outstanding_misses",
+        "shared_by_cores"
+      ],
+      "properties": {
+        "size_bytes": {
+          "$ref": "#/$defs/positive_integer_or_measure"
+        },
+        "ways": {
+          "$ref": "#/$defs/positive_integer_or_measure"
+        },
+        "latency_cycles": {
+          "$ref": "#/$defs/positive_number_or_measure"
+        },
+        "read_bytes_per_cycle": {
+          "$ref": "#/$defs/positive_number_or_measure"
+        },
+        "write_bytes_per_cycle": {
+          "$ref": "#/$defs/positive_number_or_measure"
+        },
+        "max_outstanding_misses": {
+          "$ref": "#/$defs/positive_integer_or_measure"
+        },
+        "shared_by_cores": {
+          "$ref": "#/$defs/positive_integer_or_measure"
+        },
+        "notes": {
+          "type": "string"
+        }
+      }
+    },
+    "dram": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "latency_cycles",
+        "read_bytes_per_cycle",
+        "write_bytes_per_cycle",
+        "max_outstanding_requests"
+      ],
+      "properties": {
+        "latency_cycles": {
+          "$ref": "#/$defs/positive_number_or_measure"
+        },
+        "read_bytes_per_cycle": {
+          "$ref": "#/$defs/positive_number_or_measure"
+        },
+        "write_bytes_per_cycle": {
+          "$ref": "#/$defs/positive_number_or_measure"
+        },
+        "max_outstanding_requests": {
+          "$ref": "#/$defs/positive_integer_or_measure"
+        },
+        "notes": {
+          "type": "string"
+        }
+      }
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["created_at", "simulator_min_version", "sources"],
+      "properties": {
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "last_calibrated_at": {
+          "oneOf": [
+            {
+              "type": "string",
+              "format": "date-time"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "simulator_min_version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sources": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/source"
+          }
+        },
+        "notes": {
+          "type": "string"
+        }
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "title", "accessed_on"],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "kind": {
+          "type": "string",
+          "enum": ["vendor_document", "research_paper", "measurement", "assumption"]
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "uri": {
+          "type": "string",
+          "format": "uri-reference"
+        },
+        "accessed_on": {
+          "type": "string",
+          "format": "date"
+        },
+        "command": {
+          "type": "string"
+        },
+        "notes": {
+          "type": "string"
+        }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["parameter", "sources", "confidence"],
+      "properties": {
+        "parameter": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sources": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/identifier"
+          }
+        },
+        "confidence": {
+          "$ref": "#/$defs/confidence"
+        },
+        "notes": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

@@ -5,4 +5,4 @@
 
 [submodule "third_party/softmax_sim"]
 	path = third_party/softmax_sim
-	url = https://github.com/shinezyy/softmax_sim.git
+	url = https://github.com/Dummywj/softmax_sim.git

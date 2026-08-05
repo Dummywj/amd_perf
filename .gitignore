@@ -5,6 +5,8 @@ cmake-build-*/
 out/
 bin/
 lib/
+third_party/riscv-isa-sim/build/
+third_party/riscv-pk/build/
 
 # Generated benchmark data
 /results/

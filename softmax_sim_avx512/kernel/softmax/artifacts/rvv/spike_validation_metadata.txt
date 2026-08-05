@@ -1,0 +1,9 @@
+generated_at=2026-08-05T20:04:21+08:00
+spike_commit=3d8eb089bd289c59dcb506f197a172e02beb7b5b
+spike_version=Spike RISC-V ISA Simulator 1.1.1-dev
+proxy_kernel_commit=9c61d29846d8521d9487a57739330f9682d5b542
+rvv_compiler=riscv64-linux-gnu-g++ (Ubuntu 13.3.0-6ubuntu2~24.04) 13.3.0
+target_isa=rv64gcv
+target_abi=lp64d
+tested_vlen_bits=128,512
+result=PASS

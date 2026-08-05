@@ -6,3 +6,11 @@
 [submodule "third_party/softmax_sim"]
 	path = third_party/softmax_sim
 	url = https://github.com/Dummywj/softmax_sim.git
+[submodule "third_party/riscv-isa-sim"]
+	path = third_party/riscv-isa-sim
+	url = https://github.com/riscv-software-src/riscv-isa-sim.git
+	shallow = true
+[submodule "third_party/riscv-pk"]
+	path = third_party/riscv-pk
+	url = https://github.com/riscv-software-src/riscv-pk.git
+	shallow = true

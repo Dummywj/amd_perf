@@ -49,10 +49,13 @@ softmax_sim_avx512/
 │       ├── rvv/
 │       │   └── softmax_rvv.cpp
 │       ├── tests/
-│       │   └── softmax_correctness.cpp
+│       │   ├── softmax_correctness.cpp
+│       │   └── softmax_rvv_correctness.cpp
 │       ├── scripts/
 │       │   ├── build_assembly.sh
-│       │   └── build_traces.sh
+│       │   ├── build_riscv_tools.sh
+│       │   ├── build_traces.sh
+│       │   └── run_rvv_spike_test.sh
 │       └── artifacts/
 │           ├── x86/
 │           │   ├── softmax_avx512.s
@@ -62,6 +65,9 @@ softmax_sim_avx512/
 │           └── rvv/
 │               ├── softmax_rvv.s
 │               ├── softmax_uops.json
+│               ├── spike_validation_metadata.txt
+│               ├── spike_vlen128.txt
+│               ├── spike_vlen512.txt
 │               └── build_metadata.txt
 ├── uops/
 │   └── uop_kinds.yaml
@@ -304,7 +310,7 @@ resource_kind: vector_fp       # profile 中的执行资源类别
 ## 10. 当前执行状态
 
 - P0-P2 已完成：公共算法、reference、x86 AVX-512 kernel、正确性测试和汇编生成均已实现。
-- P3 已完成编译与 trace 验证：RVV kernel 保持 VLEN-agnostic，当前环境没有 RVV 运行时，因此数值运行验证待补。
+- P3 已完成：RVV kernel 保持 VLEN-agnostic，并已在 Spike 的 VLEN=128 和 VLEN=512 配置下通过数值运行验证。
 - P4-P6 已完成：两份当前汇编的指令均有 recipe，解析器对未知指令硬错误，并输出可追溯的通用 uop trace。
 - P7 已完成第一步：x86 trace 可绑定到已校准 Zen4 profile 的资源类别；完整 opcode timing 仍按 profile 现有覆盖范围提供。
 - 详细命令、计数和环境限制见 `docs/kernel_to_uop_result.md`。

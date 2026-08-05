@@ -1,9 +1,9 @@
 schema_version: 2
 profile_id: amd-zen4-epyc-9684x
-profile_status: draft
+profile_status: calibrated
 description: >-
   Cycle-level profile for straight-line AVX-512 kernels used in LLM inference
-  on AMD EPYC 9684X. A value of "measure" must be calibrated before use.
+  on AMD EPYC 9684X, calibrated by single-core microbenchmarks.
 
 cpu:
   vendor: AuthenticAMD
@@ -29,11 +29,11 @@ isa:
 
 pipeline:
   dispatch_macro_ops_per_cycle: 6
-  retire_macro_ops_per_cycle: measure
+  retire_macro_ops_per_cycle: 6
   rob_entries: 320
   vector_scheduler_entries: 64
-  load_queue_entries: measure
-  store_queue_entries: measure
+  load_queue_entries: 44
+  store_queue_entries: 68
 
 resources:
   vector-fp:
@@ -45,28 +45,28 @@ resources:
       measured eligibility set; capacity 4 does not mean every opcode uses all pipes.
   vector-integer:
     kind: vector_integer
-    capacity: measure
+    capacity: 4
     width_bits: 256
   shuffle:
     kind: shuffle
-    capacity: measure
+    capacity: 2
     width_bits: 256
     notes: Only basic permute/reduction support is in scope.
   conversion:
     kind: conversion
-    capacity: measure
+    capacity: 2
     width_bits: 256
   address-generation:
     kind: address_generation
     capacity: 3
   load-data:
     kind: load_data
-    capacity: measure
-    bytes_per_cycle: measure
+    capacity: 2
+    bytes_per_cycle: 62
   store-data:
     kind: store_data
-    capacity: 2
-    bytes_per_cycle: measure
+    capacity: 1
+    bytes_per_cycle: 32
 
 recipes:
   "vaddps:zmm,zmm,zmm":
@@ -81,28 +81,29 @@ recipes:
     uops:
       - id: add-part-0
         kind: vector_fp
-        latency_cycles: measure
-        issue_interval_cycles: measure
+        latency_cycles: 3
+        issue_interval_cycles: 0.5
         resource_choices:
           - vector-fp
-        resource_occupancy_cycles: measure
+        resource_occupancy_cycles: 1
         part_index: 0
       - id: add-part-1
         kind: vector_fp
-        latency_cycles: measure
-        issue_interval_cycles: measure
+        latency_cycles: 3
+        issue_interval_cycles: 0.5
         resource_choices:
           - vector-fp
-        resource_occupancy_cycles: measure
+        resource_occupancy_cycles: 1
         part_index: 1
     evidence:
       - amd-zen4-sog
       - amd-epyc-9004-whitepaper
       - provisional-vaddps-model
+      - local-profile-benchmark
     notes: >-
       The two uops are an effective simulator decomposition, not a claim about
-      the exact hidden hardware uop count. Latency, throughput, occupancy and
-      opcode-specific pipe eligibility require calibration.
+      the exact hidden hardware uop count. Latency, throughput and occupancy are
+      calibrated effective values; physical pipe eligibility remains unknown.
 
 memory:
   cache_line_bytes: 64
@@ -110,38 +111,38 @@ memory:
     l1d:
       size_bytes: 32768
       ways: 8
-      latency_cycles: measure
-      read_bytes_per_cycle: measure
-      write_bytes_per_cycle: measure
-      max_outstanding_misses: measure
+      latency_cycles: 4
+      read_bytes_per_cycle: 62
+      write_bytes_per_cycle: 32
+      max_outstanding_misses: 10
       shared_by_cores: 1
     l2:
       size_bytes: 1048576
       ways: 8
-      latency_cycles: measure
-      read_bytes_per_cycle: measure
-      write_bytes_per_cycle: measure
-      max_outstanding_misses: measure
+      latency_cycles: 14
+      read_bytes_per_cycle: 32
+      write_bytes_per_cycle: 31
+      max_outstanding_misses: 20
       shared_by_cores: 1
     l3-ccd:
       size_bytes: 100663296
       ways: 16
-      latency_cycles: measure
-      read_bytes_per_cycle: measure
-      write_bytes_per_cycle: measure
-      max_outstanding_misses: measure
+      latency_cycles: 54
+      read_bytes_per_cycle: 24
+      write_bytes_per_cycle: 27
+      max_outstanding_misses: 28
       shared_by_cores: 8
       notes: 96 MiB per CCD on this EPYC 9684X host with 3D V-Cache.
   dram:
-    latency_cycles: measure
-    read_bytes_per_cycle: measure
-    write_bytes_per_cycle: measure
-    max_outstanding_requests: measure
+    latency_cycles: 373
+    read_bytes_per_cycle: 9
+    write_bytes_per_cycle: 9
+    max_outstanding_requests: 28
     notes: Values are effective single-core, NUMA-local cycle parameters.
 
 metadata:
   created_at: "2026-08-05T11:49:44+08:00"
-  last_calibrated_at: null
+  last_calibrated_at: "2026-08-05T15:36:05+08:00"
   simulator_min_version: "0.2.0-dev"
   sources:
     - id: amd-zen4-sog
@@ -180,11 +181,22 @@ metadata:
       notes: >-
         Represents the documented two-part datapath as two effective simulator
         uops; physical uop count and exact pipe eligibility remain unknown.
+    - id: local-profile-benchmark
+      kind: measurement
+      title: AMD EPYC 9684X Profile Benchmark
+      uri: ../../amd_profile_benchmark/result.md
+      accessed_on: "2026-08-05"
+      command: >-
+        amd_profile_benchmark/scripts/run_all.sh
+        amd_profile_benchmark/results/zen4-20260805
+      notes: >-
+        Seven repetitions pinned to CPU 8 and NUMA node 0. The SMT sibling was
+        idle; all PMU groups had a running ratio of 1.0.
   notes: >-
     This profile intentionally omits masks, gathers/scatters, slide-like
     operations, branch prediction, detailed frontend state, TLB, prefetch state
-    machines and frequency. Missing recipes and required "measure" values are
-    hard errors, not defaults.
+    machines and frequency. Missing instruction recipes are hard errors, not
+    defaults.
 
 evidence:
   - parameter: cpu
@@ -194,32 +206,65 @@ evidence:
     sources: [local-cpu-info, amd-epyc-9004-whitepaper]
     confidence: high
   - parameter: pipeline.dispatch_macro_ops_per_cycle
-    sources: [amd-zen4-sog]
+    sources: [amd-zen4-sog, local-profile-benchmark]
     confidence: high
+  - parameter: pipeline.retire_macro_ops_per_cycle
+    sources: [local-profile-benchmark]
+    confidence: medium
+    notes: Sustained effective value; the instantaneous retirement peak was not isolated.
   - parameter: pipeline.rob_entries
-    sources: [amd-zen4-sog]
+    sources: [amd-zen4-sog, local-profile-benchmark]
     confidence: high
     notes: 320 macro-ops without SMT; the profile assumes the sibling thread is idle.
   - parameter: pipeline.vector_scheduler_entries
-    sources: [amd-zen4-sog]
+    sources: [amd-zen4-sog, local-profile-benchmark]
     confidence: high
     notes: Aggregate of two partitioned 32-entry FP schedulers.
+  - parameter: pipeline.load_queue_entries
+    sources: [local-profile-benchmark]
+    confidence: medium
+    notes: Effective interval [40, 48], midpoint 44.
+  - parameter: pipeline.store_queue_entries
+    sources: [local-profile-benchmark]
+    confidence: medium
+    notes: Effective interval [64, 72], midpoint 68.
   - parameter: resources.vector-fp
     sources: [amd-zen4-sog, amd-epyc-9004-whitepaper]
     confidence: medium
     notes: Four aggregate pipes; opcode-specific eligibility is not implied.
+  - parameter: resources.vector-integer
+    sources: [local-profile-benchmark]
+    confidence: high
+  - parameter: resources.shuffle
+    sources: [local-profile-benchmark]
+    confidence: high
+  - parameter: resources.conversion
+    sources: [local-profile-benchmark]
+    confidence: high
   - parameter: resources.address-generation.capacity
-    sources: [amd-zen4-sog]
+    sources: [amd-zen4-sog, local-profile-benchmark]
     confidence: high
-  - parameter: resources.store-data.capacity
-    sources: [amd-zen4-sog]
+  - parameter: resources.load-data
+    sources: [local-profile-benchmark]
     confidence: high
+  - parameter: resources.store-data
+    sources: [local-profile-benchmark]
+    confidence: high
+    notes: Effective one 256-bit store and 32 bytes per cycle.
   - parameter: recipes.vaddps:zmm,zmm,zmm.vector_decomposition
-    sources: [amd-zen4-sog, amd-epyc-9004-whitepaper]
+    sources: [amd-zen4-sog, amd-epyc-9004-whitepaper, local-profile-benchmark]
     confidence: high
+  - parameter: recipes.vaddps:zmm,zmm,zmm.uops
+    sources: [local-profile-benchmark]
+    confidence: high
+    notes: Effective simulator uops, not exact hidden physical uops.
   - parameter: memory.cache_line_bytes
     sources: [local-cache-sysfs]
     confidence: high
   - parameter: memory.levels
-    sources: [local-cache-sysfs, amd-epyc-9004-whitepaper]
+    sources: [local-cache-sysfs, amd-epyc-9004-whitepaper, local-profile-benchmark]
     confidence: high
+  - parameter: memory.dram
+    sources: [local-profile-benchmark]
+    confidence: low
+    notes: Latency and bandwidth were stable; high-concurrency MLP points were noisy.

@@ -1,0 +1,9 @@
+generated_at=2026-08-05T18:52:45+08:00
+x86_compiler=c++ (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0
+x86_flags=-std=c++20 -O3 -Wall -Wextra -Wpedantic -fno-stack-protector -fno-asynchronous-unwind-tables -fno-unwind-tables -fno-exceptions -fno-rtti -fno-pie -fcf-protection=none -I/nfs/home/yuweijie/project/amd_perf/softmax_sim_avx512/kernel/softmax -mavx512f -mavx512dq -mavx512bw -mavx512vl -mfma
+rvv_compiler=riscv64-linux-gnu-g++ (Ubuntu 13.3.0-6ubuntu2~24.04) 13.3.0
+rvv_flags=-std=c++20 -O3 -Wall -Wextra -Wpedantic -fno-stack-protector -fno-asynchronous-unwind-tables -fno-unwind-tables -fno-exceptions -fno-rtti -fno-pie -fcf-protection=none -I/nfs/home/yuweijie/project/amd_perf/softmax_sim_avx512/kernel/softmax -march=rv64gcv -mabi=lp64d
+rvv_target_vlen_bits=512
+simulator_input=assembly_only
+x86_source=/nfs/home/yuweijie/project/amd_perf/softmax_sim_avx512/kernel/softmax/x86/softmax_avx512.cpp
+rvv_source=/nfs/home/yuweijie/project/amd_perf/softmax_sim_avx512/kernel/softmax/rvv/softmax_rvv.cpp

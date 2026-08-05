@@ -1,0 +1,105 @@
+version: 1
+description: >-
+  Cross-ISA semantic uop vocabulary. These entries intentionally contain no
+  latency, throughput, physical pipe or microarchitecture-specific values.
+uop_kinds:
+  - id: scalar_alu
+    category: scalar
+    execution_class: scalar_alu
+    description: Scalar integer arithmetic, address arithmetic or compare setup.
+  - id: scalar_load
+    category: scalar_memory
+    execution_class: load_data
+    description: Scalar load that produces a scalar value.
+  - id: scalar_store
+    category: scalar_memory
+    execution_class: store_data
+    description: Scalar store of a scalar value.
+  - id: scalar_fp_add
+    category: scalar_compute
+    execution_class: scalar_fp
+    description: Scalar floating-point add or subtract operation.
+  - id: scalar_fp_div
+    category: scalar_compute
+    execution_class: scalar_fp
+    description: Scalar floating-point division operation.
+  - id: scalar_move
+    category: scalar
+    execution_class: scalar_alu
+    description: Scalar register or immediate move.
+  - id: branch
+    category: control
+    execution_class: branch
+    description: Conditional or unconditional control-flow operation.
+  - id: return
+    category: control
+    execution_class: branch
+    description: Function return operation.
+  - id: vector_config
+    category: vector_control
+    execution_class: vector_config
+    description: Vector-length or vector-type configuration operation.
+  - id: address_generation
+    category: memory
+    execution_class: address_generation
+    description: Effective-address generation for a memory operation.
+  - id: vector_load
+    category: vector_memory
+    execution_class: load_data
+    description: Vector load of active elements.
+  - id: vector_store
+    category: vector_memory
+    execution_class: store_data
+    description: Vector store of active elements.
+  - id: vector_broadcast
+    category: vector_move
+    execution_class: vector_fp
+    description: Broadcast one scalar value into active vector elements.
+  - id: vector_move
+    category: vector_move
+    execution_class: vector_fp
+    description: Vector register move or zeroing operation.
+  - id: vector_fp_add
+    category: vector_compute
+    execution_class: vector_fp
+    description: Elementwise vector floating-point add.
+  - id: vector_fp_sub
+    category: vector_compute
+    execution_class: vector_fp
+    description: Elementwise vector floating-point subtract.
+  - id: vector_fp_mul
+    category: vector_compute
+    execution_class: vector_fp
+    description: Elementwise vector floating-point multiply.
+  - id: vector_fp_fma
+    category: vector_compute
+    execution_class: vector_fp
+    description: Elementwise vector fused multiply-add or subtract.
+  - id: vector_fp_max
+    category: vector_compute
+    execution_class: vector_fp
+    description: Elementwise vector floating-point min or max.
+  - id: vector_reduce_add
+    category: vector_reduction
+    execution_class: vector_fp
+    description: Reduction of active vector elements by addition.
+  - id: vector_reduce_max
+    category: vector_reduction
+    execution_class: vector_fp
+    description: Reduction of active vector elements by maximum.
+  - id: vector_convert
+    category: vector_compute
+    execution_class: conversion
+    description: Vector floating-point or integer conversion.
+  - id: vector_integer
+    category: vector_compute
+    execution_class: vector_integer
+    description: Elementwise vector integer arithmetic or logic.
+  - id: vector_shift
+    category: vector_compute
+    execution_class: vector_integer
+    description: Elementwise vector integer shift.
+  - id: vector_shuffle
+    category: vector_permutation
+    execution_class: shuffle
+    description: Vector extract, shuffle or permutation emitted by a reduction lowering.

@@ -12,6 +12,7 @@ third_party/riscv-pk/build/
 /results/
 gbench-test/results/*
 !gbench-test/results/.gitkeep
+/softmax_sim_avx512/artifacts/simulator/
 *.csv
 *.log
 

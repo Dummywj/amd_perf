@@ -1,4 +1,4 @@
-schema_version: 2
+schema_version: 3
 profile_id: amd-zen4-epyc-9684x
 profile_status: calibrated
 description: >-
@@ -68,6 +68,15 @@ resources:
     capacity: 1
     bytes_per_cycle: 32
 
+issue_domains:
+  fp-add-fma-convert:
+    capacity: 2
+    evidence: [local-profile-benchmark]
+    notes: >-
+      YMM add+FMA and add+conversion mixed streams sustain about two total
+      instructions per cycle. This is an effective eligibility constraint on
+      top of the four-pipe aggregate vector-fp resource.
+
 recipes:
   "vaddps:zmm,zmm,zmm":
     required_features:
@@ -86,6 +95,7 @@ recipes:
         resource_choices:
           - vector-fp
         resource_occupancy_cycles: 1
+        issue_domains: [fp-add-fma-convert]
         part_index: 0
       - id: add-part-1
         kind: vector_fp
@@ -94,6 +104,7 @@ recipes:
         resource_choices:
           - vector-fp
         resource_occupancy_cycles: 1
+        issue_domains: [fp-add-fma-convert]
         part_index: 1
     evidence:
       - amd-zen4-sog
@@ -104,6 +115,462 @@ recipes:
       The two uops are an effective simulator decomposition, not a claim about
       the exact hidden hardware uop count. Latency, throughput and occupancy are
       calibrated effective values; physical pipe eligibility remains unknown.
+  "vmovups:memory,zmm":
+    required_features: [avx512f]
+    decoded_macro_ops: 1
+    retire_macro_ops: 1
+    uops:
+      - id: agu
+        kind: address_generation
+        latency_cycles: 0
+        issue_interval_cycles: 1
+        resource_choices: [address-generation]
+        resource_occupancy_cycles: 1
+      - id: load
+        kind: load_data
+        latency_cycles: 4
+        issue_interval_cycles: 0.5
+        resource_choices: [load-data]
+        resource_occupancy_cycles: 1
+        depends_on: [agu]
+    evidence: [local-profile-benchmark, llvm-znver4-scheduling-model]
+  "vmovups:zmm,memory":
+    required_features: [avx512f]
+    decoded_macro_ops: 1
+    retire_macro_ops: 1
+    uops:
+      - id: agu
+        kind: address_generation
+        latency_cycles: 0
+        issue_interval_cycles: 1
+        resource_choices: [address-generation]
+        resource_occupancy_cycles: 1
+      - id: store
+        kind: store_data
+        latency_cycles: 1
+        issue_interval_cycles: 1
+        resource_choices: [store-data]
+        resource_occupancy_cycles: 2
+        depends_on: [agu]
+    evidence: [local-profile-benchmark, llvm-znver4-scheduling-model]
+  "vmovss:memory,xmm":
+    required_features: [avx]
+    decoded_macro_ops: 1
+    retire_macro_ops: 1
+    uops:
+      - id: agu
+        kind: address_generation
+        latency_cycles: 0
+        issue_interval_cycles: 1
+        resource_choices: [address-generation]
+        resource_occupancy_cycles: 1
+      - id: load
+        kind: load_data
+        latency_cycles: 4
+        issue_interval_cycles: 0.5
+        resource_choices: [load-data]
+        resource_occupancy_cycles: 1
+        depends_on: [agu]
+    evidence: [local-profile-benchmark, llvm-znver4-scheduling-model]
+  "vbroadcastss:memory,zmm":
+    required_features: [avx512f]
+    decoded_macro_ops: 1
+    retire_macro_ops: 1
+    uops:
+      - id: agu
+        kind: address_generation
+        latency_cycles: 0
+        issue_interval_cycles: 1
+        resource_choices: [address-generation]
+        resource_occupancy_cycles: 1
+      - id: load
+        kind: load_data
+        latency_cycles: 4
+        issue_interval_cycles: 0.5
+        resource_choices: [load-data]
+        resource_occupancy_cycles: 1
+        depends_on: [agu]
+      - id: broadcast
+        kind: vector_fp
+        latency_cycles: 2
+        issue_interval_cycles: 1
+        resource_choices: [vector-fp]
+        resource_occupancy_cycles: 1
+        depends_on: [load]
+    evidence: [llvm-znver4-scheduling-model]
+  "vbroadcastss:xmm,zmm":
+    required_features: [avx512f]
+    decoded_macro_ops: 1
+    retire_macro_ops: 1
+    uops:
+      - id: broadcast
+        kind: vector_fp
+        latency_cycles: 2
+        issue_interval_cycles: 1
+        resource_choices: [vector-fp]
+        resource_occupancy_cycles: 1
+    evidence: [llvm-znver4-scheduling-model]
+  "vpbroadcastd:register,zmm":
+    required_features: [avx512f]
+    decoded_macro_ops: 1
+    retire_macro_ops: 1
+    uops:
+      - id: broadcast
+        kind: vector_integer
+        latency_cycles: 1
+        issue_interval_cycles: 1
+        resource_choices: [vector-integer]
+        resource_occupancy_cycles: 1
+    evidence: [llvm-znver4-scheduling-model]
+  "vmovaps:zmm,zmm": &vector_move_recipe
+    required_features: [avx512f]
+    decoded_macro_ops: 1
+    retire_macro_ops: 1
+    uops:
+      - id: move
+        kind: vector_fp
+        latency_cycles: 0
+        issue_interval_cycles: 0.5
+        resource_choices: [vector-fp]
+        resource_occupancy_cycles: 1
+    evidence: [llvm-znver4-scheduling-model]
+    notes: LLVM models these eliminated register moves as zero latency.
+  "vmovaps:xmm,xmm": *vector_move_recipe
+  "vxorps:xmm,xmm,xmm": *vector_move_recipe
+  "vextractf64x4:immediate,zmm,ymm":
+    required_features: [avx512dq]
+    decoded_macro_ops: 1
+    retire_macro_ops: 1
+    uops:
+      - id: shuffle
+        kind: shuffle
+        latency_cycles: 2
+        issue_interval_cycles: 1
+        resource_choices: [shuffle]
+        resource_occupancy_cycles: 1
+    evidence: [llvm-znver4-scheduling-model]
+  "vextractf128:immediate,ymm,xmm":
+    required_features: [avx]
+    decoded_macro_ops: 1
+    retire_macro_ops: 1
+    uops:
+      - id: shuffle
+        kind: shuffle
+        latency_cycles: 4
+        issue_interval_cycles: 1
+        resource_choices: [shuffle]
+        resource_occupancy_cycles: 1
+    evidence: [llvm-znver4-scheduling-model]
+  "vpermilps:immediate,xmm,xmm": &xmm_shuffle_recipe
+    required_features: [avx]
+    decoded_macro_ops: 1
+    retire_macro_ops: 1
+    uops:
+      - id: shuffle
+        kind: shuffle
+        latency_cycles: 1
+        issue_interval_cycles: 0.5
+        resource_choices: [shuffle]
+        resource_occupancy_cycles: 1
+    evidence: [llvm-znver4-scheduling-model]
+  "vshufps:immediate,xmm,xmm,xmm": *xmm_shuffle_recipe
+  "vmaxps:xmm,xmm,xmm": &xmm_max_recipe
+    required_features: [avx]
+    decoded_macro_ops: 1
+    retire_macro_ops: 1
+    uops:
+      - id: max
+        kind: vector_fp
+        latency_cycles: 2
+        issue_interval_cycles: 0.5
+        resource_choices: [vector-fp]
+        resource_occupancy_cycles: 1
+    evidence: [llvm-znver4-scheduling-model]
+  "vmaxps:ymm,ymm,ymm": *xmm_max_recipe
+  "vmaxps:zmm,zmm,zmm": &zmm_max_recipe
+    required_features: [avx512f]
+    decoded_macro_ops: 1
+    retire_macro_ops: 1
+    vector_decomposition: {parts: 2, part_width_bits: 256, part_issue_gap_cycles: 1}
+    uops:
+      - id: max-part-0
+        kind: vector_fp
+        latency_cycles: 2
+        issue_interval_cycles: 0.5
+        resource_choices: [vector-fp]
+        resource_occupancy_cycles: 1
+        part_index: 0
+      - id: max-part-1
+        kind: vector_fp
+        latency_cycles: 2
+        issue_interval_cycles: 0.5
+        resource_choices: [vector-fp]
+        resource_occupancy_cycles: 1
+        part_index: 1
+    evidence: [amd-epyc-9004-whitepaper, llvm-znver4-scheduling-model]
+  "vminps:zmm,zmm,zmm": *zmm_max_recipe
+  "vmaxps:memory,zmm,zmm":
+    required_features: [avx512f]
+    decoded_macro_ops: 1
+    retire_macro_ops: 1
+    vector_decomposition: {parts: 2, part_width_bits: 256, part_issue_gap_cycles: 1}
+    uops:
+      - id: agu
+        kind: address_generation
+        latency_cycles: 0
+        issue_interval_cycles: 1
+        resource_choices: [address-generation]
+        resource_occupancy_cycles: 1
+      - id: load
+        kind: load_data
+        latency_cycles: 4
+        issue_interval_cycles: 0.5
+        resource_choices: [load-data]
+        resource_occupancy_cycles: 1
+        depends_on: [agu]
+      - id: max-part-0
+        kind: vector_fp
+        latency_cycles: 2
+        issue_interval_cycles: 0.5
+        resource_choices: [vector-fp]
+        resource_occupancy_cycles: 1
+        depends_on: [load]
+        part_index: 0
+      - id: max-part-1
+        kind: vector_fp
+        latency_cycles: 2
+        issue_interval_cycles: 0.5
+        resource_choices: [vector-fp]
+        resource_occupancy_cycles: 1
+        depends_on: [load]
+        part_index: 1
+    evidence: [local-profile-benchmark, amd-epyc-9004-whitepaper, llvm-znver4-scheduling-model]
+  "vsubps:zmm,zmm,zmm": &zmm_fp_three_cycle_recipe
+    required_features: [avx512f]
+    decoded_macro_ops: 1
+    retire_macro_ops: 1
+    vector_decomposition: {parts: 2, part_width_bits: 256, part_issue_gap_cycles: 1}
+    uops:
+      - id: fp-part-0
+        kind: vector_fp
+        latency_cycles: 3
+        issue_interval_cycles: 0.5
+        resource_choices: [vector-fp]
+        resource_occupancy_cycles: 1
+        part_index: 0
+      - id: fp-part-1
+        kind: vector_fp
+        latency_cycles: 3
+        issue_interval_cycles: 0.5
+        resource_choices: [vector-fp]
+        resource_occupancy_cycles: 1
+        part_index: 1
+    evidence: [local-profile-benchmark, amd-epyc-9004-whitepaper, llvm-znver4-scheduling-model]
+  "vmulps:zmm,zmm,zmm": *zmm_fp_three_cycle_recipe
+  "vmulps:memory,zmm,zmm":
+    required_features: [avx512f]
+    decoded_macro_ops: 1
+    retire_macro_ops: 1
+    vector_decomposition: {parts: 2, part_width_bits: 256, part_issue_gap_cycles: 1}
+    uops:
+      - id: agu
+        kind: address_generation
+        latency_cycles: 0
+        issue_interval_cycles: 1
+        resource_choices: [address-generation]
+        resource_occupancy_cycles: 1
+      - id: load
+        kind: load_data
+        latency_cycles: 4
+        issue_interval_cycles: 0.5
+        resource_choices: [load-data]
+        resource_occupancy_cycles: 1
+        depends_on: [agu]
+      - id: mul-part-0
+        kind: vector_fp
+        latency_cycles: 3
+        issue_interval_cycles: 0.5
+        resource_choices: [vector-fp]
+        resource_occupancy_cycles: 1
+        depends_on: [load]
+        part_index: 0
+      - id: mul-part-1
+        kind: vector_fp
+        latency_cycles: 3
+        issue_interval_cycles: 0.5
+        resource_choices: [vector-fp]
+        resource_occupancy_cycles: 1
+        depends_on: [load]
+        part_index: 1
+    evidence: [local-profile-benchmark, amd-epyc-9004-whitepaper, llvm-znver4-scheduling-model]
+  "vfmadd132ps:zmm,zmm,zmm": &zmm_fma_recipe
+    required_features: [avx512f, fma]
+    decoded_macro_ops: 1
+    retire_macro_ops: 1
+    vector_decomposition: {parts: 2, part_width_bits: 256, part_issue_gap_cycles: 1}
+    uops:
+      - id: fma-part-0
+        kind: vector_fp
+        latency_cycles: 4
+        issue_interval_cycles: 0.5
+        resource_choices: [vector-fp]
+        resource_occupancy_cycles: 1
+        issue_domains: [fp-add-fma-convert]
+        part_index: 0
+      - id: fma-part-1
+        kind: vector_fp
+        latency_cycles: 4
+        issue_interval_cycles: 0.5
+        resource_choices: [vector-fp]
+        resource_occupancy_cycles: 1
+        issue_domains: [fp-add-fma-convert]
+        part_index: 1
+    evidence: [local-profile-benchmark, amd-epyc-9004-whitepaper, llvm-znver4-scheduling-model]
+  "vfnmadd132ps:zmm,zmm,zmm": *zmm_fma_recipe
+  "vcvttps2dq:zmm,zmm": &zmm_convert_four_cycle_recipe
+    required_features: [avx512f]
+    decoded_macro_ops: 1
+    retire_macro_ops: 1
+    vector_decomposition: {parts: 2, part_width_bits: 256, part_issue_gap_cycles: 1}
+    uops:
+      - id: convert-part-0
+        kind: conversion
+        latency_cycles: 4
+        issue_interval_cycles: 0.5
+        resource_choices: [conversion]
+        resource_occupancy_cycles: 1
+        issue_domains: [fp-add-fma-convert]
+        part_index: 0
+      - id: convert-part-1
+        kind: conversion
+        latency_cycles: 4
+        issue_interval_cycles: 0.5
+        resource_choices: [conversion]
+        resource_occupancy_cycles: 1
+        issue_domains: [fp-add-fma-convert]
+        part_index: 1
+    evidence: [local-profile-benchmark, amd-epyc-9004-whitepaper, llvm-znver4-scheduling-model]
+  "vcvtdq2ps:zmm,zmm":
+    <<: *zmm_convert_four_cycle_recipe
+    uops:
+      - id: convert-part-0
+        kind: conversion
+        latency_cycles: 3
+        issue_interval_cycles: 0.5
+        resource_choices: [conversion]
+        resource_occupancy_cycles: 1
+        issue_domains: [fp-add-fma-convert]
+        part_index: 0
+      - id: convert-part-1
+        kind: conversion
+        latency_cycles: 3
+        issue_interval_cycles: 0.5
+        resource_choices: [conversion]
+        resource_occupancy_cycles: 1
+        issue_domains: [fp-add-fma-convert]
+        part_index: 1
+  "vpaddd:zmm,zmm,zmm": &zmm_integer_recipe
+    required_features: [avx512f]
+    decoded_macro_ops: 1
+    retire_macro_ops: 1
+    vector_decomposition: {parts: 2, part_width_bits: 256, part_issue_gap_cycles: 1}
+    uops:
+      - id: integer-part-0
+        kind: vector_integer
+        latency_cycles: 1
+        issue_interval_cycles: 0.5
+        resource_choices: [vector-integer]
+        resource_occupancy_cycles: 1
+        part_index: 0
+      - id: integer-part-1
+        kind: vector_integer
+        latency_cycles: 1
+        issue_interval_cycles: 0.5
+        resource_choices: [vector-integer]
+        resource_occupancy_cycles: 1
+        part_index: 1
+    evidence: [local-profile-benchmark, amd-epyc-9004-whitepaper, llvm-znver4-scheduling-model]
+  "vpslld:immediate,zmm,zmm": *zmm_integer_recipe
+  "vaddps:ymm,ymm,ymm": &narrow_add_recipe
+    required_features: [avx]
+    decoded_macro_ops: 1
+    retire_macro_ops: 1
+    uops:
+      - id: add
+        kind: vector_fp
+        latency_cycles: 3
+        issue_interval_cycles: 0.5
+        resource_choices: [vector-fp]
+        resource_occupancy_cycles: 1
+        issue_domains: [fp-add-fma-convert]
+    evidence: [local-profile-benchmark]
+  "vaddps:xmm,xmm,xmm": *narrow_add_recipe
+  "vzeroupper:":
+    required_features: [avx]
+    decoded_macro_ops: 1
+    retire_macro_ops: 1
+    uops:
+      - id: vector-state
+        kind: vector_integer
+        latency_cycles: 1
+        issue_interval_cycles: 0.5
+        resource_choices: [vector-integer]
+        resource_occupancy_cycles: 1
+    evidence: [llvm-znver4-scheduling-model]
+
+scalar_control_fit:
+  enabled: true
+  resources:
+    scalar-alu-fit:
+      capacity: 4
+      notes: Effective aggregate integer/address-side scalar execution slots.
+    scalar-fp-fit:
+      capacity: 2
+      notes: Effective scalar floating-point add slots.
+    scalar-div-fit:
+      capacity: 1
+      notes: Effective non-pipelined portion of scalar floating-point division.
+    branch-fit:
+      capacity: 2
+      notes: Effective predicted-branch issue slots; no misprediction model.
+  uops:
+    scalar_alu:
+      latency_cycles: 1
+      issue_interval_cycles: 0.5
+      resource_occupancy_cycles: 1
+      resource_choices: [scalar-alu-fit]
+    scalar_fp_add:
+      latency_cycles: 3
+      issue_interval_cycles: 0.5
+      resource_occupancy_cycles: 1
+      resource_choices: [scalar-fp-fit]
+    scalar_fp_div:
+      latency_cycles: 11
+      issue_interval_cycles: 3
+      resource_occupancy_cycles: 3
+      resource_choices: [scalar-div-fit]
+    scalar_move:
+      latency_cycles: 1
+      issue_interval_cycles: 0.5
+      resource_occupancy_cycles: 1
+      resource_choices: [scalar-alu-fit]
+    branch:
+      latency_cycles: 1
+      issue_interval_cycles: 0.5
+      resource_occupancy_cycles: 1
+      resource_choices: [branch-fit]
+    return:
+      latency_cycles: 5
+      issue_interval_cycles: 0.5
+      resource_occupancy_cycles: 1
+      resource_choices: [branch-fit]
+  evidence:
+    - llvm-znver4-scheduling-model
+  notes: >-
+    Provisional effective fallback values for scalar/control semantic uops.
+    They participate in dependencies and resource scheduling; they are not a
+    constant added to total softmax cycles. Existing vector, pipeline and
+    memory calibration values remain frozen.
 
 memory:
   cache_line_bytes: 64
@@ -143,7 +610,7 @@ memory:
 metadata:
   created_at: "2026-08-05T11:49:44+08:00"
   last_calibrated_at: "2026-08-05T15:36:05+08:00"
-  simulator_min_version: "0.2.0-dev"
+  simulator_min_version: "0.3.0-dev"
   sources:
     - id: amd-zen4-sog
       kind: vendor_document
@@ -192,6 +659,17 @@ metadata:
       notes: >-
         Seven repetitions pinned to CPU 8 and NUMA node 0. The SMT sibling was
         idle; all PMU groups had a running ratio of 1.0.
+    - id: llvm-znver4-scheduling-model
+      kind: assumption
+      title: LLVM znver4 scheduling model audit for scalar and control forms
+      uri: https://llvm.org/docs/CommandGuide/llvm-mca.html
+      accessed_on: "2026-08-05"
+      command: >-
+        llvm-mca -mtriple=x86_64 -mcpu=znver4 -iterations=1 -timeline
+        softmax_sim_avx512/kernel/softmax/artifacts/x86/softmax_avx512.s
+      notes: >-
+        Provides auditable initial effective values only. These fields must be
+        trained and validated separately from the frozen vector/memory fields.
   notes: >-
     This profile intentionally omits masks, gathers/scatters, slide-like
     operations, branch prediction, detailed frontend state, TLB, prefetch state
@@ -258,6 +736,10 @@ evidence:
     sources: [local-profile-benchmark]
     confidence: high
     notes: Effective simulator uops, not exact hidden physical uops.
+  - parameter: scalar_control_fit
+    sources: [llvm-znver4-scheduling-model]
+    confidence: low
+    notes: Provisional effective fallback pending dedicated fit and hold-out validation.
   - parameter: memory.cache_line_bytes
     sources: [local-cache-sysfs]
     confidence: high

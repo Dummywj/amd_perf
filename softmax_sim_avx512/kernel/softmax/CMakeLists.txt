@@ -16,7 +16,7 @@ target_compile_options(
   softmax_avx512 PRIVATE
   -Wall -Wextra -Wpedantic
   -fno-stack-protector -fno-asynchronous-unwind-tables
-  -fno-unwind-tables -fno-exceptions -fno-rtti -fcf-protection=none
+  -fno-unwind-tables -fno-exceptions -fno-rtti -fno-pie -fcf-protection=none
   -mavx512f -mavx512dq -mavx512bw -mavx512vl -mfma)
 
 add_executable(
@@ -25,6 +25,12 @@ add_executable(
 target_link_libraries(
   softmax_correctness PRIVATE softmax_reference softmax_avx512)
 target_compile_options(softmax_correctness PRIVATE -Wall -Wextra -Wpedantic)
+
+add_executable(softmax_cycles benchmarks/softmax_cycles.cpp)
+target_link_libraries(softmax_cycles PRIVATE softmax_avx512)
+target_include_directories(
+  softmax_cycles PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../../amd_profile_benchmark/include)
+target_compile_options(softmax_cycles PRIVATE -O3 -Wall -Wextra -Wpedantic)
 
 enable_testing()
 add_test(NAME softmax_correctness COMMAND softmax_correctness)

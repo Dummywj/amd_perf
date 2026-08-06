@@ -1,0 +1,21 @@
+format_version: 1
+workload_id: softmax-avx512-validation
+isa: x86
+function: softmax_avx512_f32
+assembly: ../artifacts/x86/softmax_avx512.s
+recipe: ../../../recipes/x86.yaml
+uop_kinds: ../../../uops/uop_kinds.yaml
+profile: ../../../profiles/amd_zen4.yaml
+schema: ../../../schemas/profile.schema.json
+measurement_summary: ../artifacts/x86/cycles-20260805-final/summary.json
+execution_models: [out_of_order, in_order]
+points:
+  - {count: 16, cache_mode: hot-l1, validation_class: diagnostic}
+  - {count: 32, cache_mode: hot-l1, validation_class: diagnostic}
+  - {count: 64, cache_mode: hot-l1, validation_class: diagnostic}
+  - {count: 128, cache_mode: hot-l1, validation_class: steady-l1}
+  - {count: 256, cache_mode: hot-l1, validation_class: steady-l1}
+  - {count: 512, cache_mode: hot-l1, validation_class: steady-l1}
+  - {count: 1024, cache_mode: hot-l1, validation_class: steady-l1}
+  - {count: 2048, cache_mode: hot-l1, validation_class: steady-l1}
+  - {count: 4096, cache_mode: hot-capacity, validation_class: l1-capacity-boundary}

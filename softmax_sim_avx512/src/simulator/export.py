@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from .engine import SimulationResult
+from .semantic_view import build_semantic_view_model
 
 
 def write_result(path: Path, result: SimulationResult) -> None:
@@ -236,6 +237,32 @@ def write_timeline(
             f"{macro.sequence:5d} {''.join(marks).rstrip():<{max_cycles + 1}} {macro.assembly}"
         )
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def write_semantic_html(path: Path, result: SimulationResult) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    full_view_model = build_semantic_view_model(result)
+    view_model = {
+        "view_model_version": full_view_model["view_model_version"],
+        "metadata": {
+            **full_view_model["metadata"],
+            "semantic_uop_count": len(full_view_model["semantic_uops"]),
+        },
+        "semantic_uops": full_view_model["semantic_uops"],
+        "dependencies": full_view_model["dependencies"]["semantic"],
+    }
+    template_path = Path(__file__).resolve().parents[1] / "viewer/semantic_schedule.html"
+    template = template_path.read_text(encoding="utf-8")
+    marker = "__SEMANTIC_TRACE_DATA__"
+    if template.count(marker) != 1:
+        raise ValueError(f"semantic viewer template must contain one {marker} marker")
+    encoded = json.dumps(view_model, ensure_ascii=False, separators=(",", ":"))
+    encoded = (
+        encoded.replace("&", "\\u0026")
+        .replace("<", "\\u003c")
+        .replace(">", "\\u003e")
+    )
+    path.write_text(template.replace(marker, encoded), encoding="utf-8")
 
 
 def _occupancy_samples(result: SimulationResult) -> list[tuple[int, dict[str, int]]]:

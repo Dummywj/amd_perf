@@ -22,7 +22,8 @@ address_generation + vector_load + max-part-0 + max-part-1
 4. 保持 x86、RVV 和未来 ISA 的表示一致；
 5. 允许将多个微架构 execution uop 聚合回一个可读的语义节点。
 
-本文只定义设计和数据契约，不修改当前的 `uops/uop_kinds.yaml`、trace 格式或可视化程序。
+当前实现已按本文契约增加 semantic/execution 显式绑定、聚合 ViewModel 和离线
+HTML 可视化；`uops/uop_kinds.yaml` 仍是唯一的跨 ISA 语义类型目录。
 
 ## 2. 三个层次
 
@@ -76,7 +77,7 @@ Execution uop 是某个 profile 下的实际调度节点，包含：
 
 ## 3. Semantic Uop 的数据契约
 
-未来的语义 trace 建议将每个节点表示为：
+当前可视化 ViewModel 将每个节点表示为：
 
 ```json
 {
@@ -143,7 +144,8 @@ Execution uop 是某个 profile 下的实际调度节点，包含：
 | `effects` | 内存、flags 和控制流副作用 |
 | `provenance` | ISA、助记符和源代码位置等审计信息 |
 
-当前静态 trace 中的 `semantic_uops` 已经包含 `kind` 和父指令关系；上述操作数契约是后续扩展的目标格式。
+动态 trace 中的 `semantic_uops` 保存 `kind` 和局部依赖；ViewModel 在导出时根据
+寄存器版本、内存地址和指令操作数生成上述操作数，不将这些显示字段反向写入调度器。
 
 ## 4. 操作数设计
 
@@ -407,7 +409,7 @@ Zen 4 profile 绑定后，只有最后一个语义节点发生 512 到两个 256
 
 ## 10. 语义级可视化设计
 
-后续新增 semantic uop 可视化文件时，建议同时输出两种层次：
+当前 `semantic_schedule.html` 同时包含两种层次：
 
 ### 10.1 Semantic view
 
@@ -420,16 +422,20 @@ kind
 source_operands
 destination_operands
 abstract_resource
-semantic_issue_cycle
-semantic_complete_cycle
+dispatch_tick
+issue_tick
+complete_tick
+retire_tick
 dependencies
 ```
 
 对于一个 semantic uop 对应多个 execution uop：
 
 ```text
-semantic_issue_cycle    = min(part.issue_cycle)
-semantic_complete_cycle = max(part.complete_cycle)
+semantic dispatch_tick = parent instruction dispatch_tick
+semantic issue_tick    = min(child execution uop issue_tick)
+semantic complete_tick = max(child execution uop complete_tick)
+semantic retire_tick   = parent instruction retire_tick
 ```
 
 资源字段显示抽象资源；可以附带 child execution uop ID，但不把 child 当作额外语义节点。
@@ -452,7 +458,22 @@ semantic lane:     AGU -> LOAD -> FP_MAX
 execution lanes:   AGU[0], load-data[1], vector-fp[0], vector-fp[1]
 ```
 
-默认教学视图应显示 instruction 和 semantic lane；只有用户展开某个 semantic uop 时才显示 execution part，避免 CISC 拆解淹没算法数据流。
+默认教学视图只显示 semantic uop lane；execution part 只作为选中节点的绑定详情，
+避免 CISC 拆解淹没算法数据流。
+
+### 10.4 HTML Viewer
+
+模拟器默认输出一个自包含的 `semantic_schedule.html`。其中：
+
+- 模拟器核心只生成结构化 ViewModel；通用模板负责 HTML/CSS/JavaScript；
+- Canvas 绘制 cycle/tick 时间线，SVG 只绘制选中节点的直接依赖；
+- DOM 显示层级标签、操作数、资源、stall 和精确时间；
+- 只生成 semantic uop 行，支持 ID/类型/汇编筛选和依赖跳转；
+- 支持 Continuous 和 Discrete 两种看板：连续模式显示区间，离散模式按 cycle 显示
+  `.`（waiting）、`x`（execute）、`o`（retire），离散时间轴固定不可缩放；
+- 连续模式支持平移和高灵敏度缩放；
+- 不依赖 CDN、后端服务或额外 JSON 文件，可以直接在浏览器打开；
+- semantic/execution 映射若不唯一则在 profile 绑定阶段硬错误。
 
 ## 11. 校验规则
 

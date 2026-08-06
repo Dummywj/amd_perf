@@ -10,6 +10,7 @@ from typing import Any
 import yaml
 
 from .model import BoundTrace, ExecutionUop, MacroOp, Resource, VECTOR_RESOURCE_KINDS
+from .semantic import SemanticBindingError, bind_execution_semantics
 
 
 class ProfileError(ValueError):
@@ -105,6 +106,10 @@ class Profile:
             )
             if recipe is None:
                 recipe = self._fallback_recipe(semantic_kinds, key)
+            try:
+                semantic_bindings = bind_execution_semantics(instruction, recipe["uops"])
+            except SemanticBindingError as error:
+                raise ProfileError(str(error)) from error
             local_ids: dict[str, str] = {}
             execution: list[ExecutionUop] = []
             for local_index, entry in enumerate(recipe["uops"]):
@@ -145,6 +150,7 @@ class Profile:
                         occupancy_ticks=occupancy,
                         resource_choices=tuple(entry["resource_choices"]),
                         issue_domains=tuple(entry.get("issue_domains", [])),
+                        semantic_ids=semantic_bindings[local_index],
                         memory=memory,
                     )
                 )

@@ -309,10 +309,21 @@ python3 -m src.simulator.cli \
 | `result.json` | 总周期、逐指令/逐 uop 时间戳和瓶颈摘要 |
 | `schedule_events.jsonl` | dispatch、ready、issue、complete、retire 原始事件流 |
 | `schedule_perfetto.json` | 可交互调度时间线 |
+| `semantic_schedule.html` | 自包含的 semantic uop 连续/离散周期看板 |
 | `dependencies.dot` | execution-uop 依赖图 |
 | `timeline.txt` | 小规模文本时间线 |
 
-### 11.1 Perfetto
+### 11.1 Semantic HTML Viewer
+
+直接在浏览器打开 `semantic_schedule.html`。页面只显示 semantic uop 行，选中节点后
+可查看所属汇编、操作数、资源、依赖和 execution part ID。时间轴可在 cycle/tick 间切换。
+
+看板提供两种模式：`Continuous` 用区间表示 waiting/execute/retire，支持平移和缩放；
+`Discrete` 使用固定 cycle 单元，以 `.`、`x`、`o` 表示三种状态，时间轴不可缩放。
+
+页面的数据、样式和交互脚本都内嵌在同一个 HTML 中，不需要网络或额外 JSON 文件。
+
+### 11.2 Perfetto
 
 把 `schedule_perfetto.json` 拖入 `https://ui.perfetto.dev/`。视图包含：
 
@@ -323,7 +334,7 @@ python3 -m src.simulator.cli \
 
 大 trace 可以通过 `--visual-start` 和 `--visual-limit` 只导出感兴趣的动态指令区间。
 
-### 11.2 Graphviz
+### 11.3 Graphviz
 
 若系统安装了 Graphviz：
 
@@ -334,7 +345,7 @@ dot -Tsvg artifacts/simulator/tutorial-n256/dependencies.dot \
 
 DOT 图适合检查依赖是否正确，Perfetto 更适合检查资源竞争和时间重叠。
 
-### 11.3 文本时间线
+### 11.4 文本时间线
 
 ```bash
 sed -n '1,100p' artifacts/simulator/tutorial-n256/timeline.txt

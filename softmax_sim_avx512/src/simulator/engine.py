@@ -56,6 +56,7 @@ class SimulationResult:
                     "id": uop.id,
                     "sequence": uop.sequence,
                     "parent_id": uop.parent_id,
+                    "semantic_ids": list(uop.semantic_ids),
                     "kind": uop.kind,
                     "scheduling_class": uop.scheduling_class,
                     "resource": uop.resource,

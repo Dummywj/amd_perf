@@ -14,6 +14,7 @@ from src.simulator.export import (
     write_events_jsonl,
     write_perfetto,
     write_result,
+    write_semantic_html,
     write_timeline,
 )
 from src.simulator.profile import ProfileError, load_profile
@@ -75,6 +76,7 @@ def main() -> int:
             args.visual_start,
             min(args.visual_limit, 80),
         )
+        write_semantic_html(args.output_dir / "semantic_schedule.html", result)
     except (OSError, ValueError, KeyError, ProfileError, SimulatorError) as error:
         print(f"simulator: error: {error}", file=sys.stderr)
         return 2

@@ -24,6 +24,7 @@ class ExecutionUop:
     occupancy_ticks: int
     resource_choices: tuple[str, ...]
     issue_domains: tuple[str, ...]
+    semantic_ids: tuple[str, ...] = ()
     dependencies: set[str] = field(default_factory=set)
     issue_after_uop: str | None = None
     issue_gap_ticks: int = 0

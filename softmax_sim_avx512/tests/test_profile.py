@@ -5,6 +5,7 @@ from pathlib import Path
 
 from src.frontends.x86 import build_dynamic_trace
 from src.simulator.profile import ProfileError, load_profile
+from src.simulator.semantic import SemanticBindingError, bind_execution_semantics
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -25,6 +26,7 @@ class ProfileTest(unittest.TestCase):
         self.assertEqual(len(bound.macros), trace["statistics"]["dynamic_instruction_count"])
         self.assertGreater(len(bound.uops), len(bound.macros))
         self.assertTrue(all(uop.resource_choices for uop in bound.uops))
+        self.assertTrue(all(len(uop.semantic_ids) == 1 for uop in bound.uops))
         memory_macro = next(
             macro for macro in bound.macros if macro.mnemonic == "vmovups"
         )
@@ -63,6 +65,19 @@ class ProfileTest(unittest.TestCase):
             ],
             0.5,
         )
+
+    def test_ambiguous_semantic_execution_mapping_is_rejected(self) -> None:
+        instruction = {
+            "id": "i0",
+            "semantic_uops": [
+                {"local_id": "u0", "kind": "vector_fp_add"},
+                {"local_id": "u1", "kind": "vector_fp_mul"},
+            ],
+        }
+        with self.assertRaisesRegex(SemanticBindingError, "ambiguous semantic mapping"):
+            bind_execution_semantics(
+                instruction, [{"id": "compute", "kind": "vector_fp"}]
+            )
 
 
 if __name__ == "__main__":

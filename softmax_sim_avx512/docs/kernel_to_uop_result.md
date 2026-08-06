@@ -10,8 +10,8 @@
 - `kernel/softmax/rvv/softmax_rvv.cpp`：VLEN-agnostic RVV 三遍 softmax。
 - `uops/uop_kinds.yaml`：x86/RVV 共用的语义 uop catalog。
 - `recipes/x86.yaml`、`recipes/rvv.yaml`：当前编译器实际生成指令的 recipe。
-- `utils/asm_to_uop.py`：汇编到通用 uop trace 的严格解析器；缺失 recipe 直接报错。
-- `utils/bind_uop_profile.py`：将通用 trace 绑定到现有 profile 的资源类别。
+- `src/utils/asm_to_uop.py`：汇编到通用 uop trace 的严格解析器；缺失 recipe 直接报错。
+- `src/utils/bind_uop_profile.py`：将通用 trace 绑定到现有 profile 的资源类别。
 - `kernel/softmax/scripts/build_assembly.sh`：生成 x86/RVV 汇编和编译元数据。
 - `kernel/softmax/scripts/build_traces.sh`：一键生成汇编、trace 和 x86 Zen4 资源绑定结果。
 - `kernel/softmax/scripts/build_riscv_tools.sh`：构建固定 submodule commit 的 Spike 和 proxy kernel。

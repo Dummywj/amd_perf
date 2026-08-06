@@ -74,9 +74,10 @@ softmax_sim_avx512/
 ├── recipes/
 │   ├── x86.yaml
 │   └── rvv.yaml
-└── utils/
-    ├── asm_to_uop.py
-    └── bind_uop_profile.py
+└── src/
+    └── utils/
+        ├── asm_to_uop.py
+        └── bind_uop_profile.py
 ```
 
 `kernel/softmax/artifacts` 保存固定编译器版本生成的汇编和编译元数据；临时目标文件和 build 目录不提交。

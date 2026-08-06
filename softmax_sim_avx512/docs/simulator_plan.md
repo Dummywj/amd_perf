@@ -78,11 +78,8 @@ softmax_sim_avx512/
 │           ├── run_x86_cycles.sh
 │           └── compare_cycles.py
 └── artifacts/
-    └── simulator/
-        ├── traces/
-        ├── measurements/
-        ├── schedules/
-        └── reports/
+    ├── schedules/
+    └── reports/
 ```
 
 `third_party/softmax_sim` 只作为历史参考，不直接作为新后端基础。它把指令硬编码成 RISC-V `REDUCE/FMA/LOAD/STORE/EXP2`，包含 BF16 和合成 bandwidth 假设，不能满足当前通用 uop/profile 边界。

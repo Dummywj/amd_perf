@@ -99,8 +99,8 @@ resource/queue backpressure；它不是完整总周期分解。
 
 代表性双模式产物位于：
 
-- `artifacts/simulator/schedules/zen4-n256-ooo/`
-- `artifacts/simulator/schedules/zen4-n256-in-order/`
+- `artifacts/schedules/zen4-n256-ooo/`
+- `artifacts/schedules/zen4-n256-in-order/`
 
 每个目录包含：
 
@@ -124,7 +124,7 @@ softmax_sim_avx512/kernel/softmax/scripts/run_x86_cycles.sh \
 
 python3 softmax_sim_avx512/kernel/softmax/scripts/compare_cycles.py \
   softmax_sim_avx512/kernel/softmax/workloads/softmax.yaml \
-  softmax_sim_avx512/artifacts/simulator/reports/zen4-20260805-final
+  softmax_sim_avx512/artifacts/reports/zen4-20260805-final
 
 PYTHONPATH=softmax_sim_avx512 python3 -m unittest discover \
   -s softmax_sim_avx512/tests -v

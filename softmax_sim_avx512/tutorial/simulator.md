@@ -288,7 +288,7 @@ python3 -m src.simulator.cli \
   --count 256 \
   --execution-model out_of_order \
   --cache-mode hot-l1 \
-  --output-dir artifacts/simulator/tutorial-n256
+  --output-dir artifacts/tutorial-n256
 ```
 
 切换成顺序发射只需修改：
@@ -297,7 +297,7 @@ python3 -m src.simulator.cli \
 --execution-model in_order
 ```
 
-仿真输出位于 `artifacts/simulator/`，该目录属于可重复生成产物，已被 Git 忽略。
+仿真输出位于 `artifacts/`，该目录属于可重复生成产物，已被 Git 忽略。
 
 ## 11. 输出与可视化
 
@@ -339,8 +339,8 @@ python3 -m src.simulator.cli \
 若系统安装了 Graphviz：
 
 ```bash
-dot -Tsvg artifacts/simulator/tutorial-n256/dependencies.dot \
-  -o artifacts/simulator/tutorial-n256/dependencies.svg
+dot -Tsvg artifacts/tutorial-n256/dependencies.dot \
+  -o artifacts/tutorial-n256/dependencies.svg
 ```
 
 DOT 图适合检查依赖是否正确，Perfetto 更适合检查资源竞争和时间重叠。
@@ -348,7 +348,7 @@ DOT 图适合检查依赖是否正确，Perfetto 更适合检查资源竞争和�
 ### 11.4 文本时间线
 
 ```bash
-sed -n '1,100p' artifacts/simulator/tutorial-n256/timeline.txt
+sed -n '1,100p' artifacts/tutorial-n256/timeline.txt
 ```
 
 标记含义为：`D` dispatch、`I` first issue、`E` complete、`R` retire。同一周期多个状态重合时显示 `*`。
@@ -383,7 +383,7 @@ sed -n '1,100p' artifacts/simulator/tutorial-n256/timeline.txt
 ```bash
 python3 softmax_sim_avx512/kernel/softmax/scripts/compare_cycles.py \
   softmax_sim_avx512/kernel/softmax/workloads/softmax.yaml \
-  softmax_sim_avx512/artifacts/simulator/comparison
+  softmax_sim_avx512/artifacts/comparison
 ```
 
 ## 14. 当前边界

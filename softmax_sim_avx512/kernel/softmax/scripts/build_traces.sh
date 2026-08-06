@@ -20,8 +20,8 @@ fi
 cd "${sim_dir}"
 artifact_dir="kernel/softmax/artifacts"
 
-parser="${sim_dir}/utils/asm_to_uop.py"
-binder="${sim_dir}/utils/bind_uop_profile.py"
+parser="${sim_dir}/src/utils/asm_to_uop.py"
+binder="${sim_dir}/src/utils/bind_uop_profile.py"
 catalog="uops/uop_kinds.yaml"
 
 "${python_bin}" "${parser}" \

@@ -228,6 +228,7 @@ def _execution_node(uop: ExecutionUop, result: SimulationResult) -> dict[str, An
         "resource_lane": uop.resource_lane,
         "resource_choices": list(uop.resource_choices),
         "issue_domains": list(uop.issue_domains),
+        "issue_domain_demands": dict(sorted(uop.issue_domain_demands.items())),
         "latency_ticks": uop.latency_ticks,
         "issue_interval_ticks": uop.issue_interval_ticks,
         "occupancy_ticks": uop.occupancy_ticks,

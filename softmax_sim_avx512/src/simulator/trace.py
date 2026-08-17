@@ -39,6 +39,18 @@ def validate_bound_trace(trace: BoundTrace) -> None:
     for uop in trace.uops:
         if uop.parent_id not in macros:
             raise TraceValidationError(f"unknown parent macro-op: {uop.parent_id}")
+        unlisted_demands = set(uop.issue_domain_demands) - set(uop.issue_domains)
+        if unlisted_demands:
+            raise TraceValidationError(
+                f"uop {uop.id} has demands for unlisted issue domains: "
+                + ", ".join(sorted(unlisted_demands))
+            )
+        for domain_id, demand in uop.issue_domain_demands.items():
+            if isinstance(demand, bool) or not isinstance(demand, int) or demand < 1:
+                raise TraceValidationError(
+                    f"uop {uop.id} has invalid demand for issue domain "
+                    f"{domain_id}: {demand!r}"
+                )
         for resource_id in uop.resource_choices:
             if resource_id not in trace.resources:
                 raise TraceValidationError(

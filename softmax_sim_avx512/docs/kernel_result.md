@@ -1,81 +1,101 @@
 # Kernel 测试结果
 
-本文汇总新增 kernel 的功能验证、Zen 4 真机周期和模拟器周期。真机以 7 次重复测量的净周期中位数为主，模拟器以乱序模型为主；顺序模型仅用于诊断乱序收益。
+本文汇总新增 kernel 的功能验证、Zen 4 真机周期和模拟器周期。真机以 7 次重复测量的净周期中位数为主；乱序模型同时给出显式关闭 memory-source FMA overlap 限制的基线，以及按 Zen 4 profile 默认开启限制的修改后结果。
 
 ## 验证环境
 
 - 真机：AMD EPYC 9684X（Zen 4），固定 CPU 8、NUMA node 0。
-- x86：GCC 13.3，AVX-512/FMA，功能测试 56/56 通过。
-- RVV：GCC 13.3 cross compiler，Spike VLEN=128/512 均 56/56 通过。
+- x86：GCC 13.3，AVX-512/FMA，功能测试 34/34 通过。
+- RVV：GCC 13.3 cross compiler，Spike VLEN=128/512 均 34/34 通过。
 - 模拟器 profile：`amd-zen4-epyc-9684x`。
-- Profile SHA-256：`c088e39a9153e1701cd38b28116b337fff06005de430cfa921fdd5d0761747f5`。
-- `N=256/1024` 使用 `hot-l1`；`N=4096` 使用 `hot-capacity`。
-- 第一批纯向量 kernel 的 API 约束为 `N > 0` 且 `N % 16 == 0`。
-- 本轮未修改既有 profile 参数；新 memory-source timing 是基于既有 load/compute 参数的 provisional 等效分解，尚未单独校准。
+- Profile SHA-256：`375fef4b97795e5906b25dd1471204cf54268c0f55dbc06848d63aa922b2d5e2`。
+- Zen 4 overlap 配置：默认开启，最多 2 个待发射组，仅匹配 `vector_fp_fma` semantic uop。
+- 共享 issue domain：窄执行域 2 part-token/cycle、总执行域 4 part-token/cycle、加权寄存器源交付域 8 source-token/cycle。
+- 报告仅覆盖 `N=512/1024/2048`，全部使用 `hot-l1`。
+- 校验脚本只读取 profile，不会根据误差自动改参。
 
 ## 周期对比
 
-相对误差为 `(乱序模拟 - 真机中位数) / 真机中位数`。绝对值不超过 10%记为首轮通过，超过 10% 记为待分析。
+相对误差为 `(模拟 - 真机中位数) / 真机中位数`。三个规模的绝对误差不超过 10% 记为通过。
 
-| Kernel | N | Cache | 真机总周期 [p10, p90] | 真机周期/元素 | 乱序周期/元素 | 乱序总周期 | 顺序总周期 | 误差 | 结论 |
+| Kernel | N | Cache | 真机净周期 [p10, p90] | 限制前周期 | 限制前误差 | 限制后周期 | 限制后误差 | 绝对误差改善 | 结论 |
 |---|---:|---|---:|---:|---:|---:|---:|---:|---|
-| fma_throughput | 256 | hot-l1 | 273.11 [273.05, 273.19] | 1.0669 | 1.0859 | 278.00 | 385.00 | +1.8% | 通过 |
-| fma_throughput | 1024 | hot-l1 | 1041.31 [1041.01, 1058.47] | 1.0169 | 1.0215 | 1046.00 | 1453.00 | +0.5% | 通过 |
-| fma_throughput | 4096 | hot-capacity | 4251.44 [4235.06, 4254.81] | 1.0379 | 1.0083 | 4130.00 | 8320.00 | -2.9% | 通过 |
-| fma_latency | 256 | hot-l1 | 1073.22 [1073.19, 1073.32] | 4.1923 | 4.2188 | 1080.00 | 1198.00 | +0.6% | 通过 |
-| fma_latency | 1024 | hot-l1 | 4289.91 [4289.63, 4290.16] | 4.1894 | 4.1953 | 4296.00 | 4750.00 | +0.1% | 通过 |
-| fma_latency | 4096 | hot-capacity | 17197.62 [17196.75, 17197.92] | 4.1986 | 4.1917 | 17169.00 | 21528.00 | -0.2% | 通过 |
-| axpy | 256 | hot-l1 | 51.02 [50.94, 53.41] | 0.1993 | 0.1680 | 43.00 | 204.00 | -15.7% | 待分析 |
-| axpy | 1024 | hot-l1 | 173.43 [171.87, 175.40] | 0.1694 | 0.1396 | 143.00 | 782.00 | -17.5% | 待分析 |
-| axpy | 4096 | hot-capacity | 1486.06 [1484.92, 1487.37] | 0.3628 | 0.2773 | 1136.00 | 5909.00 | -23.6% | 待分析 |
-| dot_product | 256 | hot-l1 | 90.01 [88.02, 90.90] | 0.3516 | 0.3633 | 93.00 | 158.00 | +3.3% | 通过 |
-| dot_product | 1024 | hot-l1 | 282.04 [280.03, 285.25] | 0.2754 | 0.2783 | 285.00 | 544.00 | +1.0% | 通过 |
-| dot_product | 4096 | hot-capacity | 1048.63 [1048.24, 1049.35] | 0.2560 | 0.2595 | 1063.00 | 4893.00 | +1.4% | 通过 |
-| vector_copy | 256 | hot-l1 | 31.94 [31.01, 32.04] | 0.1248 | 0.1406 | 36.00 | 103.00 | +12.7% | 待分析 |
-| vector_copy | 1024 | hot-l1 | 127.09 [127.07, 127.22] | 0.1241 | 0.1289 | 132.00 | 391.00 | +3.9% | 通过 |
-| vector_copy | 4096 | hot-capacity | 521.67 [519.47, 521.82] | 0.1274 | 0.1260 | 516.00 | 1543.00 | -1.1% | 通过 |
-| vector_triad | 256 | hot-l1 | 53.01 [51.02, 55.15] | 0.2071 | 0.1680 | 43.00 | 204.00 | -18.9% | 待分析 |
-| vector_triad | 1024 | hot-l1 | 174.12 [172.33, 175.89] | 0.1700 | 0.1396 | 143.00 | 782.00 | -17.9% | 待分析 |
-| vector_triad | 4096 | hot-capacity | 1488.12 [1487.85, 1488.67] | 0.3633 | 0.2773 | 1136.00 | 5909.00 | -23.7% | 待分析 |
-| vector_reduction | 256 | hot-l1 | 73.82 [72.00, 78.04] | 0.2883 | 0.2969 | 76.00 | 235.00 | +3.0% | 通过 |
-| vector_reduction | 1024 | hot-l1 | 233.00 [225.62, 235.83] | 0.2275 | 0.2148 | 220.00 | 811.00 | -5.6% | 通过 |
-| vector_reduction | 4096 | hot-capacity | 877.28 [874.89, 879.88] | 0.2142 | 0.1943 | 796.00 | 3115.00 | -9.3% | 通过 |
-| conversion | 256 | hot-l1 | 40.51 [40.01, 40.51] | 0.1582 | 0.1758 | 45.00 | 231.00 | +11.1% | 待分析 |
-| conversion | 1024 | hot-l1 | 144.08 [144.06, 144.39] | 0.1407 | 0.1377 | 141.00 | 903.00 | -2.1% | 通过 |
-| conversion | 4096 | hot-capacity | 543.21 [541.70, 547.80] | 0.1326 | 0.1282 | 525.00 | 3591.00 | -3.4% | 通过 |
-| vector_integer | 256 | hot-l1 | 34.01 [34.00, 34.10] | 0.1328 | 0.1523 | 39.00 | 151.00 | +14.7% | 待分析 |
-| vector_integer | 1024 | hot-l1 | 130.08 [129.90, 130.38] | 0.1270 | 0.1318 | 135.00 | 583.00 | +3.8% | 通过 |
-| vector_integer | 4096 | hot-capacity | 532.48 [531.96, 532.87] | 0.1300 | 0.1267 | 519.00 | 2311.00 | -2.5% | 通过 |
-| mixed_compute | 256 | hot-l1 | 66.01 [66.01, 71.95] | 0.2578 | 0.2617 | 67.00 | 362.00 | +1.5% | 通过 |
-| mixed_compute | 1024 | hot-l1 | 223.08 [221.03, 250.01] | 0.2179 | 0.2070 | 212.00 | 1418.00 | -5.0% | 通过 |
-| mixed_compute | 4096 | hot-capacity | 972.40 [962.07, 984.41] | 0.2374 | 0.2065 | 846.00 | 8212.00 | -13.0% | 待分析 |
-| pointer_agu | 256 | hot-l1 | 66.02 [61.01, 68.92] | 0.2579 | 0.2422 | 62.00 | 265.00 | -6.1% | 通过 |
-| pointer_agu | 1024 | hot-l1 | 226.60 [224.51, 227.89] | 0.2213 | 0.2061 | 211.00 | 1035.00 | -6.9% | 通过 |
-| pointer_agu | 4096 | hot-capacity | 2021.45 [2020.97, 2023.21] | 0.4935 | 0.3796 | 1555.00 | 9480.00 | -23.1% | 待分析 |
+| fma_throughput | 512 | hot-l1 | 529.15 [529.09, 536.51] | 534.00 | +0.9% | 541.00 | +2.2% | -1.3 pp | 通过 |
+| fma_throughput | 1024 | hot-l1 | 1041.30 [1041.01, 1067.54] | 1046.00 | +0.5% | 1061.00 | +1.9% | -1.4 pp | 通过 |
+| fma_throughput | 2048 | hot-l1 | 2068.54 [2065.63, 2089.04] | 2070.00 | +0.1% | 2101.00 | +1.6% | -1.5 pp | 通过 |
+| fma_latency | 512 | hot-l1 | 2145.48 [2145.29, 2145.72] | 2152.00 | +0.3% | 2152.00 | +0.3% | +0.0 pp | 通过 |
+| fma_latency | 1024 | hot-l1 | 4289.58 [4289.25, 4290.58] | 4296.00 | +0.1% | 4296.00 | +0.1% | +0.0 pp | 通过 |
+| fma_latency | 2048 | hot-l1 | 8579.38 [8578.15, 8584.12] | 8584.00 | +0.1% | 8584.00 | +0.1% | +0.0 pp | 通过 |
+| axpy | 512 | hot-l1 | 95.27 [91.64, 98.87] | 77.00 | -19.2% | 91.00 | -4.5% | +14.7 pp | 通过 |
+| axpy | 1024 | hot-l1 | 172.61 [171.73, 174.02] | 143.00 | -17.2% | 173.00 | +0.2% | +16.9 pp | 通过 |
+| axpy | 2048 | hot-l1 | 333.87 [333.45, 334.96] | 275.00 | -17.6% | 340.00 | +1.8% | +15.8 pp | 通过 |
+| dot_product | 512 | hot-l1 | 152.04 [152.02, 154.01] | 157.00 | +3.3% | 157.00 | +3.3% | +0.0 pp | 通过 |
+| dot_product | 1024 | hot-l1 | 280.05 [280.03, 281.99] | 285.00 | +1.8% | 285.00 | +1.8% | +0.0 pp | 通过 |
+| dot_product | 2048 | hot-l1 | 536.12 [536.08, 538.83] | 541.00 | +0.9% | 541.00 | +0.9% | +0.0 pp | 通过 |
+| vector_copy | 512 | hot-l1 | 63.02 [62.97, 63.12] | 68.00 | +7.9% | 68.00 | +7.9% | +0.0 pp | 通过 |
+| vector_copy | 1024 | hot-l1 | 127.08 [127.06, 127.25] | 132.00 | +3.9% | 132.00 | +3.9% | +0.0 pp | 通过 |
+| vector_copy | 2048 | hot-l1 | 255.31 [255.29, 255.70] | 260.00 | +1.8% | 260.00 | +1.8% | +0.0 pp | 通过 |
+| vector_triad | 512 | hot-l1 | 92.54 [91.64, 94.35] | 77.00 | -16.8% | 91.00 | -1.7% | +15.1 pp | 通过 |
+| vector_triad | 1024 | hot-l1 | 171.88 [170.76, 176.03] | 143.00 | -16.8% | 173.00 | +0.6% | +16.2 pp | 通过 |
+| vector_triad | 2048 | hot-l1 | 333.86 [332.21, 334.68] | 275.00 | -17.6% | 340.00 | +1.8% | +15.8 pp | 通过 |
+| vector_reduction | 512 | hot-l1 | 127.17 [120.52, 130.38] | 124.00 | -2.5% | 124.00 | -2.5% | +0.0 pp | 通过 |
+| vector_reduction | 1024 | hot-l1 | 233.53 [229.92, 237.83] | 220.00 | -5.8% | 220.00 | -5.8% | +0.0 pp | 通过 |
+| vector_reduction | 2048 | hot-l1 | 448.77 [443.07, 453.66] | 412.00 | -8.2% | 412.00 | -8.2% | +0.0 pp | 通过 |
+| conversion | 512 | hot-l1 | 75.52 [75.47, 75.92] | 77.00 | +2.0% | 77.00 | +2.0% | +0.0 pp | 通过 |
+| conversion | 1024 | hot-l1 | 144.07 [144.05, 144.19] | 141.00 | -2.1% | 141.00 | -2.1% | +0.0 pp | 通过 |
+| conversion | 2048 | hot-l1 | 271.27 [271.26, 271.53] | 269.00 | -0.8% | 269.00 | -0.8% | +0.0 pp | 通过 |
+| vector_integer | 512 | hot-l1 | 66.03 [65.91, 66.06] | 71.00 | +7.5% | 71.00 | +7.5% | +0.0 pp | 通过 |
+| vector_integer | 1024 | hot-l1 | 130.10 [130.07, 130.90] | 135.00 | +3.8% | 135.00 | +3.8% | +0.0 pp | 通过 |
+| vector_integer | 2048 | hot-l1 | 258.28 [258.25, 258.56] | 263.00 | +1.8% | 263.00 | +1.8% | +0.0 pp | 通过 |
+| mixed_compute | 512 | hot-l1 | 122.01 [118.59, 123.21] | 119.00 | -2.5% | 117.00 | -4.1% | -1.6 pp | 通过 |
+| mixed_compute | 1024 | hot-l1 | 242.03 [236.76, 250.02] | 226.00 | -6.6% | 220.00 | -9.1% | -2.5 pp | 通过 |
+| mixed_compute | 2048 | hot-l1 | 498.04 [479.07, 506.20] | 443.00 | -11.1% | 429.00 | -13.9% | -2.8 pp | 待分析 |
+| pointer_agu | 512 | hot-l1 | 120.56 [116.46, 125.51] | 111.00 | -7.9% | 111.00 | -7.9% | +0.0 pp | 通过 |
+| pointer_agu | 1024 | hot-l1 | 227.24 [224.03, 228.30] | 211.00 | -7.1% | 211.00 | -7.1% | +0.0 pp | 通过 |
+| pointer_agu | 2048 | hot-l1 | 444.55 [444.22, 446.22] | 409.00 | -8.0% | 409.00 | -8.0% | +0.0 pp | 通过 |
 
-## 模拟器诊断摘要（N=4096）
+## 顺序模型诊断（N=2048）
+
+顺序模型仅用于观察乱序调度收益，不参与通过判定。
+
+| Kernel | 顺序周期 | 乱序（默认限制）周期 |
+|---|---:|---:|
+| fma_throughput | 2877.00 | 2101.00 |
+| fma_latency | 9486.00 | 8584.00 |
+| axpy | 1552.00 | 340.00 |
+| dot_product | 1058.00 | 541.00 |
+| vector_copy | 775.00 | 260.00 |
+| vector_triad | 1552.00 | 340.00 |
+| vector_reduction | 1579.00 | 412.00 |
+| conversion | 1799.00 | 269.00 |
+| vector_integer | 1159.00 | 263.00 |
+| mixed_compute | 2826.00 | 429.00 |
+| pointer_agu | 2061.00 | 409.00 |
+
+## 模拟器诊断摘要（N=2048）
 
 | Kernel | Macro-op | Execution uop | 关键路径 | Peak ROB/VS/LQ/SQ | 主要资源 issue |
 |---|---:|---:|---:|---:|---|
-| fma_throughput | 4825 | 9697 | 112.00 | 90/64/10/8 | address-generation=516, branch-fit=35, load-data=260, scalar-alu-fit=111, store-data=256, vector-fp=8518 |
-| fma_latency | 5384 | 10508 | 17168.00 | 82/64/6/4 | address-generation=514, branch-fit=258, load-data=258, scalar-alu-fit=514, store-data=256, vector-fp=8707 |
-| axpy | 1543 | 2825 | 275.00 | 136/21/44/23 | address-generation=769, branch-fit=258, load-data=513, scalar-alu-fit=515, store-data=256, vector-fp=513 |
-| dot_product | 1297 | 2322 | 1060.00 | 121/29/44/1 | address-generation=513, branch-fit=258, load-data=512, scalar-alu-fit=515, shuffle=4, vector-fp=517 |
-| vector_copy | 1285 | 1797 | 261.00 | 225/0/44/45 | address-generation=512, branch-fit=258, load-data=256, scalar-alu-fit=514, store-data=256 |
-| vector_triad | 1543 | 2825 | 275.00 | 136/21/44/23 | address-generation=769, branch-fit=258, load-data=513, scalar-alu-fit=515, store-data=256, vector-fp=513 |
-| vector_reduction | 1306 | 2845 | 795.00 | 126/40/44/1 | address-generation=514, branch-fit=258, load-data=513, scalar-alu-fit=514, shuffle=9, vector-fp=1034 |
-| conversion | 1541 | 2821 | 268.00 | 216/64/36/36 | address-generation=512, branch-fit=258, conversion=1024, load-data=256, scalar-alu-fit=514, store-data=256 |
-| vector_integer | 1543 | 2823 | 263.00 | 268/16/44/45 | address-generation=512, branch-fit=258, load-data=256, scalar-alu-fit=515, store-data=256, vector-integer=1026 |
-| mixed_compute | 2312 | 4874 | 284.00 | 150/64/33/17 | address-generation=769, branch-fit=258, conversion=1024, load-data=513, scalar-alu-fit=515, store-data=256, vector-fp=513, vector-integer=1026 |
-| pointer_agu | 1800 | 3848 | 277.00 | 105/29/44/15 | address-generation=1024, branch-fit=258, load-data=768, scalar-alu-fit=517, store-data=256, vector-fp=1024 |
+| fma_throughput | 2425 | 4865 | 86.00 | 90/64/10/8 | address-generation=260, branch-fit=19, load-data=132, scalar-alu-fit=63, store-data=128, vector-fp=4262 |
+| fma_latency | 2696 | 5260 | 8582.00 | 83/64/4/4 | address-generation=258, branch-fit=130, load-data=130, scalar-alu-fit=258, store-data=128, vector-fp=4355 |
+| axpy | 775 | 1417 | 137.00 | 133/20/44/22 | address-generation=385, branch-fit=130, load-data=257, scalar-alu-fit=259, store-data=128, vector-fp=257 |
+| dot_product | 657 | 1170 | 538.00 | 121/29/44/1 | address-generation=257, branch-fit=130, load-data=256, scalar-alu-fit=259, shuffle=4, vector-fp=261 |
+| vector_copy | 645 | 901 | 133.00 | 225/0/44/45 | address-generation=256, branch-fit=130, load-data=128, scalar-alu-fit=258, store-data=128 |
+| vector_triad | 775 | 1417 | 137.00 | 133/20/44/22 | address-generation=385, branch-fit=130, load-data=257, scalar-alu-fit=259, store-data=128, vector-fp=257 |
+| vector_reduction | 666 | 1437 | 411.00 | 126/40/44/1 | address-generation=258, branch-fit=130, load-data=257, scalar-alu-fit=258, shuffle=9, vector-fp=522 |
+| conversion | 773 | 1413 | 140.00 | 216/64/36/36 | address-generation=256, branch-fit=130, conversion=512, load-data=128, scalar-alu-fit=258, store-data=128 |
+| vector_integer | 775 | 1415 | 135.00 | 268/16/44/45 | address-generation=256, branch-fit=130, load-data=128, scalar-alu-fit=259, store-data=128, vector-integer=514 |
+| mixed_compute | 1160 | 2442 | 146.00 | 150/64/34/17 | address-generation=385, branch-fit=130, conversion=512, load-data=257, scalar-alu-fit=259, store-data=128, vector-fp=257, vector-integer=514 |
+| pointer_agu | 904 | 1928 | 139.00 | 105/27/44/15 | address-generation=512, branch-fit=130, load-data=384, scalar-alu-fit=261, store-data=128, vector-fp=512 |
 
 ## 审核结论
 
-- 共 33 个周期点，22 个处于 ±10% 内；在 `N>=1024` 的 22 个稳态点中，16 个处于 ±10% 内。
-- FMA throughput/latency、Dot、Copy、Reduction、Conversion、Integer 已能较好隔离对应资源，主要稳态点达到约 10% 误差范围。
-- AXPY、Triad、Pointer/AGU 以及部分 Mixed Compute 点仍有明显偏差，优先检查 memory-source 指令的 load/compute 重叠、cache 初态和 AGU 竞争。
-- `N=4096` 的多输入工作集超过 L1 容量，不应与 `hot-l1` 点混合拟合。
-- 新 memory-source profile recipe 复用既有 load/compute timing，属于 provisional 等效假设；不能视为新的本地校准结果。
-- 当前结果不足以授权修改 profile；后续参数变更仍需独立微基准和 hold-out kernel 共同验证。
+- 有真机数据且参与审核的周期点共 33 个，32 个处于 ±10% 内。
+- overlap 限制实际改变了 12 个参审点；全部参审点的平均绝对误差由 6.2% 变为 3.7%，三个稳态规模则由 6.2% 变为 3.7%，总体改善。
+- `N=512/1024/2048`：AXPY/Triad 最大绝对误差由 19.2% 降至 4.5%；Pointer/AGU 保持不变且不超过 8.0%；Mixed Compute 仍为 4.1% 到 13.9%。
+- 稳态点仍需分析的 kernel：mixed_compute。
+- 容量边界与 L2 初始状态不在本轮报告范围内。
+- overlap 限制是微架构相关的等效调度约束，不应被解读为精确的物理队列容量。
+- 后续 profile 变更仍需独立微基准和 hold-out kernel 共同验证。
 
 原始 PMU 和模拟器 JSON 位于被 Git 忽略的 `artifacts/kernel_validation/`。

@@ -44,13 +44,13 @@ class KernelSuiteTest(unittest.TestCase):
                 self.assertEqual(workload["function"], f"{kernel}_avx512_f32")
                 self.assertEqual(
                     [point["count"] for point in workload["points"]],
-                    [256, 1024, 4096],
+                    [512, 1024, 2048],
                 )
                 dynamic = build_dynamic_trace(
                     ROOT / f"kernel/{kernel}/artifacts/x86/{kernel}_avx512.s",
                     f"{kernel}_avx512_f32",
                     ROOT / "recipes/x86.yaml",
-                    256,
+                    512,
                     ROOT / "uops/uop_kinds.yaml",
                 )
                 bound = self.profile.bind(dynamic)

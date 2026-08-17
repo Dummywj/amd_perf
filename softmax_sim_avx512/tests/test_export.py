@@ -117,6 +117,19 @@ class ExportTest(unittest.TestCase):
                 for edge in view_model["dependencies"]["semantic"]
             )
         )
+        weighted = next(
+            node
+            for node in view_model["execution_uops"]
+            if any(demand > 1 for demand in node["issue_domain_demands"].values())
+        )
+        self.assertTrue(
+            set(weighted["issue_domain_demands"]).issubset(weighted["issue_domains"])
+        )
+        serialized = {uop["id"]: uop for uop in result.to_dict()["uops"]}
+        self.assertEqual(
+            serialized[weighted["id"]]["issue_domain_demands"],
+            weighted["issue_domain_demands"],
+        )
 
 
 if __name__ == "__main__":

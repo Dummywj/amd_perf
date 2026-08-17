@@ -110,6 +110,78 @@ class EngineTest(unittest.TestCase):
                     "simulate() must not write timing state into its input trace",
                 )
 
+    def test_profile_default_limits_pending_load_to_compute_groups(self) -> None:
+        dynamic = build_dynamic_trace(
+            ROOT / "kernel/axpy/artifacts/x86/axpy_avx512.s",
+            "axpy_avx512_f32",
+            ROOT / "recipes/x86.yaml",
+            1024,
+        )
+        bound = self.profile.bind(dynamic)
+
+        limited = simulate(bound, self.profile, "out_of_order", "hot-l1")
+        unlimited = simulate(
+            bound,
+            self.profile,
+            "out_of_order",
+            "hot-l1",
+            memory_compute_overlap_limit=False,
+        )
+
+        policy = limited.summary["memory_compute_overlap_limit"]
+        self.assertTrue(policy["enabled"])
+        self.assertEqual(policy["max_pending_groups"], 2)
+        self.assertEqual(policy["peak_pending_groups"], 2)
+        self.assertEqual(policy["compute_semantic_kinds"], ["vector_fp_fma"])
+        self.assertEqual(policy["eligible_groups"], 64)
+        self.assertGreater(limited.cycles, unlimited.cycles)
+        self.assertGreater(
+            limited.summary["issue_blocker_observations"].get(
+                "memory_compute_overlap_limit", 0
+            ),
+            0,
+        )
+        self.assertFalse(
+            unlimited.summary["memory_compute_overlap_limit"]["enabled"]
+        )
+        self.assertEqual(
+            unlimited.summary["memory_compute_overlap_limit"]["eligible_groups"], 64
+        )
+
+        pointer_dynamic = build_dynamic_trace(
+            ROOT / "kernel/pointer_agu/artifacts/x86/pointer_agu_avx512.s",
+            "pointer_agu_avx512_f32",
+            ROOT / "recipes/x86.yaml",
+            256,
+        )
+        pointer = simulate(
+            self.profile.bind(pointer_dynamic), self.profile, "out_of_order", "hot-l1"
+        )
+        self.assertEqual(
+            pointer.summary["memory_compute_overlap_limit"]["eligible_groups"], 0
+        )
+
+    def test_overlap_group_discovery_does_not_use_mnemonics(self) -> None:
+        dynamic = build_dynamic_trace(
+            ROOT / "kernel/axpy/artifacts/x86/axpy_avx512.s",
+            "axpy_avx512_f32",
+            ROOT / "recipes/x86.yaml",
+            256,
+        )
+        bound = self.profile.bind(dynamic)
+        baseline = simulate(bound, self.profile, "out_of_order", "hot-l1")
+        for macro in bound.macros:
+            macro.mnemonic = "isa_neutral_test"
+        for uop in bound.uops:
+            uop.mnemonic = "isa_neutral_test"
+        renamed = simulate(bound, self.profile, "out_of_order", "hot-l1")
+
+        self.assertEqual(baseline.cycles, renamed.cycles)
+        self.assertEqual(
+            baseline.summary["memory_compute_overlap_limit"],
+            renamed.summary["memory_compute_overlap_limit"],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

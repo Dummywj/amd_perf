@@ -33,7 +33,8 @@ profile 后可接入相同后端。
 
 ## 2. Profile 与 Recipe
 
-`profile.schema.json` 已升级到 version 3，新增：
+本节记录首版实现时 `profile.schema.json` 升级到 version 3 的变更；当前 schema
+已在加权 issue-domain 支持中升级到 version 4。当时新增：
 
 - `issue_domains`：表达 add/FMA/conversion 的共享发射资格；
 - `scalar_control_fit`：集中存放 scalar/control 有效时序，不在代码中放默认常数；

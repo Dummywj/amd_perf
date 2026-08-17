@@ -1,6 +1,4 @@
-kernel=fma_latency n=16 max_abs=0 PASS
-kernel=fma_latency n=32 max_abs=0 PASS
-kernel=fma_latency n=64 max_abs=0 PASS
-kernel=fma_latency n=256 max_abs=0 PASS
-kernel=fma_latency n=4096 max_abs=0 PASS
+kernel=fma_latency n=512 max_abs=0 PASS
+kernel=fma_latency n=1024 max_abs=0 PASS
+kernel=fma_latency n=2048 max_abs=0 PASS
 kernel=fma_latency cross_block_dependency PASS

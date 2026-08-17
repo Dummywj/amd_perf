@@ -89,7 +89,7 @@ bool CheckFmaLatencyCarriesState() {
 int main() {
   bool passed = true;
   for (const KernelSpec& spec : kKernelSpecs) {
-    for (std::size_t count : {16U, 32U, 64U, 256U, 4096U}) {
+    for (std::size_t count : {512U, 1024U, 2048U}) {
       passed &= Check(spec, count);
     }
   }

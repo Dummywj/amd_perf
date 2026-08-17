@@ -40,6 +40,20 @@ def main() -> int:
     parser.add_argument(
         "--cache-mode", choices=("hot-l1", "hot-capacity", "cold"), default="hot-l1"
     )
+    overlap = parser.add_mutually_exclusive_group()
+    overlap.add_argument(
+        "--memory-compute-overlap-limit",
+        dest="memory_compute_overlap_limit",
+        action="store_true",
+        help="enable the profile's pending load-to-compute group limit",
+    )
+    overlap.add_argument(
+        "--no-memory-compute-overlap-limit",
+        dest="memory_compute_overlap_limit",
+        action="store_false",
+        help="disable the profile's pending load-to-compute group limit",
+    )
+    parser.set_defaults(memory_compute_overlap_limit=None)
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--visual-start", type=int, default=0)
     parser.add_argument("--visual-limit", type=int, default=200)
@@ -54,7 +68,11 @@ def main() -> int:
         )
         profile = load_profile(args.profile, args.schema)
         result = simulate(
-            profile.bind(dynamic), profile, args.execution_model, args.cache_mode
+            profile.bind(dynamic),
+            profile,
+            args.execution_model,
+            args.cache_mode,
+            args.memory_compute_overlap_limit,
         )
         args.output_dir.mkdir(parents=True, exist_ok=True)
         write_json(args.output_dir / "dynamic_trace.json", dynamic)

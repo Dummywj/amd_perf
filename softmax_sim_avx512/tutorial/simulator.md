@@ -83,6 +83,7 @@ semantic uop 描述跨 ISA 的含义，例如 `vector_fp_fma` 或 `vector_load`�
 - `occupancy_ticks`：执行资源被占用多久；
 - `resource_choices`：允许使用的等效资源；
 - `issue_domains`：跨资源共享的发射限制；
+- `issue_domain_demands`：该 uop 在各共享域中一次需要占用的 token 数；
 - 可选的 `part_index` 和 part 间隔；
 - 可选的访存地址、访问宽度和 cache line。
 
@@ -160,6 +161,12 @@ Zen 4 profile 将多数 512 位操作分解成两个 256 位 execution part，�
 
 外部 RAW 依赖会尽量按相同 `part_index` 连接。例如前一条 ZMM 加法的 part 0 可以连接后一条操作的 part 0，从而避免把两个等效 part 错误串成完全串行。
 
+默认情况下，recipe 的整条指令 issue interval 会按 part 数折算到每个 part stream。
+`vpaddd` 是例外：ZMM 单流实测接近 2 instructions/cycle，因此其
+`scale_issue_interval_by_parts: false`，两个 256-bit part stream 都保持 0.5-cycle
+interval。这个开关只修正等效分解的计费方式，不表示硬件中存在两条可单独观察的物理
+uop。
+
 ## 6. 后端状态
 
 AMD Zen 4 profile 当前提供的主要结构参数为：
@@ -176,9 +183,56 @@ AMD Zen 4 profile 当前提供的主要结构参数为：
 | Load data | 2 slots，62 B/cycle | load-data 等效资源和带宽 |
 | Store data | 1 slot，32 B/cycle | store-data 等效资源和带宽 |
 
-此外还有 vector-fp、vector-integer、conversion、shuffle 资源和 `fp-add-fma-convert` 共享 issue domain。
+此外还有 vector-fp、vector-integer、conversion、shuffle 资源，以及以下共享 issue domain：
+
+| Issue domain | Capacity | Token 含义 |
+|---|---:|---|
+| `fp-add-fma-convert` | 2 | 每周期可接收的 256-bit add/FMA/conversion execution part |
+| `fma-convert-integer-total` | 4 | 每周期可接收的 256-bit FMA/conversion/integer execution part 总数 |
+| `zmm-register-source-delivery` | 8 | 每周期可交付的 256-bit ZMM 寄存器源操作数 |
+
+前两个域中每个 execution part 默认消耗一个 token。寄存器源交付域使用加权需求：
+寄存器源 add、conversion、FMA 和 integer part 分别消耗 2、1、3 和 2 个 token；
+memory-source recipe 只计算仍来自寄存器的源。一个 uop 同时属于多个域时，所有域都
+必须满足需求才能发射。
 
 这些资源是可校准的等效容量，不表示每种 opcode 都能使用资源组中的全部物理 pipe。
+共享域名称和容量同样只是对实测竞争关系的最小等效表达，不能作为真实端口数量、端口
+编号或寄存器文件读口结构的物理证明。
+
+### 6.1 ZMM 资源竞争微基准
+
+为识别 conversion、FMA 和 integer 之间的隐藏共享约束，profile benchmark 新增了三组
+固定比例混合指令流：conversion+integer、FMA+integer，以及
+conversion+FMA+integer。测试先测每类指令的独立基线，再用互不依赖的寄存器链保持
+足够并行度，避免把 RAW latency 误判为资源竞争；混合循环保持固定指令比例，便于比较
+各类别速率。
+
+Zen 4 平台的中位数如下，单位均为 ZMM instructions/cycle：
+
+| 指令流 | 总速率 | Conversion | FMA | Integer |
+|---|---:|---:|---:|---:|
+| Conversion（独立基线） | 0.997966 | 0.997966 | - | - |
+| FMA（独立基线） | 0.997923 | - | 0.997923 | - |
+| Integer（独立基线） | 1.99337 | - | - | 1.99337 |
+| Conversion + Integer，1:1 | 1.99245 | 0.996227 | - | 0.996227 |
+| FMA + Integer，1:1 | 1.51607 | - | 0.758033 | 0.758033 |
+| Conversion + FMA + Integer，1:1:2 | 1.99277 | 0.498192 | 0.498192 | 0.996383 |
+
+Conversion+integer 基本保持各自 1 instruction/cycle，而 FMA+integer 明显低于两者
+独立吞吐之和；三类混合流又稳定在约 2 instructions/cycle。只设置一个不加权的“共享
+端口数”无法同时解释这些结果。当前 profile 因而组合使用 2/4 part-token issue domain
+与 8 个 256-bit source-token/cycle 的加权源交付域。该模型能表达 FMA 的三个寄存器
+源比 conversion 的单个源产生更高压力，但仍是行为等效模型。
+
+测试结果同时审核三个独立基线是否齐全、目标 ZMM 指令退休数、PMU 有效运行比例和重复
+测量 CV；只有 retired-ZMM/target 位于 `[0.98, 1.02]`、PMU running ratio 不低于
+0.95 且主指标 CV 不超过 3% 时，才使用中位数校准。测试实现和
+原始摘要分别见 [resource_contention.cpp](../../amd_profile_benchmark/src/resource_contention.cpp)
+和 [summary.md](../../amd_profile_benchmark/results/zen4-zmm-contention-20260817/summary.md)。
+
+这里直接测量的是 `vcvttps2dq`。`vcvtdq2ps` 尚未得到同类竞争数据；而且三个固定配比
+不能唯一反演物理端口，因此新增共享域只作为中等置信度等效模型。
 
 ## 7. 一次事件循环
 
@@ -215,6 +269,11 @@ vector waiting window 在指令的第一个向量 execution uop 发射时释放�
 - `issue_domain_busy`：共享发射域达到容量；
 - `memory_bandwidth`：命中层次的读写带宽尚未释放；
 - `memory_outstanding`：未完成 miss 数达到上限。
+
+issue domain 的阻塞检查是加权的。对于需求为 `d` 的域，当前 tick 至少要有 `d` 个
+token 可用；发射后同时占用这 `d` 个 token，直到 occupancy 到期。一个 uop 只要有
+任意所属域无法满足需求，就记录为 `issue_domain_busy`。未显式配置
+`issue_domain_demands` 的域保持默认需求 1。
 
 一个 uop 可能在多个 tick 遇到不同阻塞，结果中会同时保存最后阻塞原因和累计 blocker 观察值。
 
@@ -272,7 +331,7 @@ python3 -m pip install -r softmax_sim_avx512/requirements.txt
 softmax_sim_avx512/kernel/softmax/scripts/build_assembly.sh
 ```
 
-从 `softmax_sim_avx512` 目录运行一个 `N=256`、hot-L1、乱序模拟：
+从 `softmax_sim_avx512` 目录运行一个 `N=512`、hot-L1、乱序模拟：
 
 ```bash
 cd softmax_sim_avx512
@@ -285,10 +344,10 @@ python3 -m src.simulator.cli \
   --uop-kinds uops/uop_kinds.yaml \
   --profile profiles/amd_zen4.yaml \
   --schema schemas/profile.schema.json \
-  --count 256 \
+  --count 512 \
   --execution-model out_of_order \
   --cache-mode hot-l1 \
-  --output-dir artifacts/tutorial-n256
+  --output-dir artifacts/tutorial-n512
 ```
 
 切换成顺序发射只需修改：
@@ -339,8 +398,8 @@ python3 -m src.simulator.cli \
 若系统安装了 Graphviz：
 
 ```bash
-dot -Tsvg artifacts/tutorial-n256/dependencies.dot \
-  -o artifacts/tutorial-n256/dependencies.svg
+dot -Tsvg artifacts/tutorial-n512/dependencies.dot \
+  -o artifacts/tutorial-n512/dependencies.svg
 ```
 
 DOT 图适合检查依赖是否正确，Perfetto 更适合检查资源竞争和时间重叠。
@@ -348,7 +407,7 @@ DOT 图适合检查依赖是否正确，Perfetto 更适合检查资源竞争和�
 ### 11.4 文本时间线
 
 ```bash
-sed -n '1,100p' artifacts/tutorial-n256/timeline.txt
+sed -n '1,100p' artifacts/tutorial-n512/timeline.txt
 ```
 
 标记含义为：`D` dispatch、`I` first issue、`E` complete、`R` retire。同一周期多个状态重合时显示 `*`。

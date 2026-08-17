@@ -29,9 +29,15 @@
 指令 form、recipe uop ID 和可选的 part index 组成；不同 class 仍会受到共享资源
 capacity 和 issue domain 的限制。
 
-对于拆成两个 part 的 512-bit 指令，binder 会把 profile 中的 part interval 乘以
-part 数。当前 profile 中的 `0.5 cycle * 2 parts` 因而成为每个 part stream 的
-1-cycle 有效间隔；part 0 和 part 1 还必须保持 1-cycle `part_issue_gap`。
+`issue_domains` 指定一个 uop 还必须经过哪些共享域，`issue_domain_demands` 指定它在
+各域一次消耗多少 token。未显式配置的需求默认为 1；属于多个域的 uop 必须同时通过
+全部域的容量检查。
+
+对于拆成两个 part 的 512-bit 指令，binder 默认把 profile 中的 part interval 乘以
+part 数。当前多数 recipe 中的 `0.5 cycle * 2 parts` 因而成为每个 part stream 的
+1-cycle 有效间隔；part 0 和 part 1 还必须保持 1-cycle `part_issue_gap`。若 recipe
+显式设置 `scale_issue_interval_by_parts: false`，则保留原 interval；当前整数 add/shift
+使用这一例外。
 
 ## 3. Pipeline 和窗口资源
 
@@ -103,7 +109,22 @@ bandwidth。即使存在两个 load-data lane，连续 64-byte L1 load 仍会受
 Load 和 store 的带宽时间线彼此独立，所以 L1 read 62 B/cycle 和 write 32 B/cycle
 可以同时推进。该模型表达的是等效聚合带宽，不模拟具体 load/store port 组合。
 
-### 4.3 Cache 和 DRAM 参数
+### 4.3 Memory-source FMA 跨迭代重叠限制
+
+模拟器可以限制“load 已发射、但依赖它的 FMA execution uop 尚未全部发射”的复合组数量。
+组的识别只依赖 semantic uop 类型和同一 macro-op 内的依赖图，不检查 x86 mnemonic，
+因此其他 ISA 前端生成相同 semantic uop 后也可复用。
+
+Zen 4 profile 默认开启该限制：`max_pending_groups: 2`，且只匹配
+`vector_fp_fma`。它用于约束 memory-source FMA 被等效拆成 load 和 compute 后产生的
+过度跨迭代重叠；普通 vector add、conversion 和 integer uop 不受影响。
+
+CLI 可用 `--memory-compute-overlap-limit` 显式开启，或用
+`--no-memory-compute-overlap-limit` 关闭。Python API 的
+`memory_compute_overlap_limit=None` 表示跟随 profile，`False` 用于复现旧基线。
+该数值是低置信度的等效调度约束，不代表 Zen 4 存在容量恰为 2 的物理队列。
+
+### 4.4 Cache 和 DRAM 参数
 
 | 层次 | 容量/相联度 | Latency | 读带宽 | 写带宽 | 最大 outstanding |
 |---|---|---:|---:|---:|---:|
@@ -127,8 +148,13 @@ miss outstanding 名额或该层次带宽。
 
 ## 5. 向量计算资源
 
-所有向量物理资源按 256-bit 宽度建模。多数 ZMM 操作会拆成两个 part，且 part 1
+所有向量执行资源按等效 256-bit 宽度建模。多数 ZMM 操作会拆成两个 part，且 part 1
 至少比 part 0 晚 1 cycle 发射。
+
+通常整条指令的 issue interval 会按 part 数折算到每个 part stream。`vpaddd` 的 ZMM
+单流实测接近 2 instructions/cycle，因此它设置
+`scale_issue_interval_by_parts: false`：两个 part stream 都保留 0.5-cycle interval，
+避免分解过程把整数吞吐错误减半。这是等效计费规则，不是物理 uop 数结论。
 
 ### 5.1 资源容量
 
@@ -139,31 +165,77 @@ miss outstanding 名额或该层次带宽。
 | `shuffle` | 2 | 256-bit | extract、shuffle、reduction lowering |
 | `conversion` | 2 | 256-bit | FP32/I32 conversion |
 
-此外 `fp-add-fma-convert` issue domain 的 capacity 为 2。add、FMA 和 conversion
-即使各自资源仍有空闲，合计也只能占用两个共享 issue-domain lane。该 domain 是
-有效资格约束，不表示已确定两条真实物理 pipe。
+资源 capacity 之外还有三组共享 issue domain：
 
-### 5.2 计算时序
+| Issue domain | Capacity | 单位 | 适用约束 |
+|---|---:|---|---|
+| `fp-add-fma-convert` | 2 | 256-bit part-token/cycle | add、FMA、conversion 的共享发射资格 |
+| `fma-convert-integer-total` | 4 | 256-bit part-token/cycle | FMA、conversion、integer 的总发射资格 |
+| `zmm-register-source-delivery` | 8 | 256-bit source-token/cycle | ZMM 寄存器源操作数的加权交付能力 |
 
-下表的 interval 是 recipe 中的值。标记为 ZMM 两 part 的项，在绑定后每个 part
-stream 的有效 interval 为 1 cycle。
+前两个域中每个 execution part 消耗一个 token。源交付域按每个 part 的显式寄存器源数
+加权：寄存器源 add/conversion/FMA/integer 分别为 2/1/3/2；memory-source recipe 只计
+仍来自寄存器的源。一个 uop 同时属于多个域时，必须在所有域中都有足够 token 才能
+发射。例如 FMA part 即使 `vector-fp` lane 空闲，也可能因为源交付域不足 3 个 token
+而等待。
 
-| 操作 | 分解 | Latency | Recipe interval | Occupancy | 是否流水化 |
-|---|---|---:|---:|---:|---|
-| ZMM add/sub/mul | 2 x 256-bit | 3 | 0.5 | 1 | 是 |
-| ZMM FMA/FNMADD | 2 x 256-bit | 4 | 0.5 | 1 | 是 |
-| ZMM max/min | 2 x 256-bit | 2 | 0.5 | 1 | 是 |
-| XMM/YMM max | 1 uop | 2 | 0.5 | 1 | 是 |
-| XMM/YMM add | 1 uop | 3 | 0.5 | 1 | 是 |
-| FP32 -> I32 conversion | 2 x 256-bit | 4 | 0.5 | 1 | 是 |
-| I32 -> FP32 conversion | 2 x 256-bit | 3 | 0.5 | 1 | 是 |
-| ZMM integer add/shift | 2 x 256-bit | 1 | 0.5 | 1 | latency 等于 occupancy |
-| Register/memory broadcast | 1 uop | 2 | 1 | 1 | 是 |
-| Integer broadcast | 1 uop | 1 | 1 | 1 | latency 等于 occupancy |
-| Eliminated vector move | 1 uop | 0 | 0.5 | 1 | 零结果延迟的等效模型 |
-| `vextractf64x4` | 1 uop | 2 | 1 | 1 | 是 |
-| `vextractf128` | 1 uop | 4 | 1 | 1 | 是 |
-| XMM permute/shuffle | 1 uop | 1 | 0.5 | 1 | latency 等于 occupancy |
+这些 domain 是由吞吐竞争微基准得到的**有效资格约束**。它们不证明 Zen 4 存在对应
+数量的真实物理 pipe、固定端口编号或 8 个寄存器文件读口。
+
+### 5.2 ZMM 资源竞争微基准
+
+新增微基准覆盖 conversion+integer、FMA+integer 和
+conversion+FMA+integer 三种组合。每组混合流使用固定类别比例和互不依赖的寄存器链，
+先用单类流归一化，再观察混合后各类吞吐是否下降。这样可以把共享资源竞争与 RAW
+依赖链 latency 分开。
+
+Zen 4 重复测量的中位数如下，单位为 ZMM instructions/cycle：
+
+| 指令流 | 总速率 | Conversion | FMA | Integer |
+|---|---:|---:|---:|---:|
+| Conversion（独立基线） | 0.997966 | 0.997966 | - | - |
+| FMA（独立基线） | 0.997923 | - | 0.997923 | - |
+| Integer（独立基线） | 1.99337 | - | - | 1.99337 |
+| Conversion + Integer，1:1 | 1.99245 | 0.996227 | - | 0.996227 |
+| FMA + Integer，1:1 | 1.51607 | - | 0.758033 | 0.758033 |
+| Conversion + FMA + Integer，1:1:2 | 1.99277 | 0.498192 | 0.498192 | 0.996383 |
+
+FMA+integer 的总吞吐只有 1.51607，而 conversion+integer 和三类 1:1:2 混合流都接近
+2。这组结果无法由各自独立资源 capacity 或单一不加权共享域同时解释。按每个
+256-bit part 的寄存器源数计费后，FMA/integer/conversion 分别需要 3/2/1 个 token，
+配合 8 source-token/cycle 和两个 part-token 域可以一致表达三组竞争关系。
+
+每轮测试同时要求三个独立基线齐全，并检查目标 ZMM 退休数、PMU running ratio 和重复
+样本 CV。准入阈值分别是 retired-ZMM/target 位于 `[0.98, 1.02]`、PMU running ratio
+不低于 0.95、主指标 CV 不超过 3%。这里的数值是审核通过样本的中位数，
+而不是单次最优值。实现与结果摘要见
+[resource_contention.cpp](../../amd_profile_benchmark/src/resource_contention.cpp) 和
+[summary.md](../../amd_profile_benchmark/results/zen4-zmm-contention-20260817/summary.md)。
+
+Conversion 基准使用 kernel 对应的 `vcvttps2dq`；`vcvtdq2ps` 尚无直接竞争数据。三个
+固定比例只能支持等效约束，不能唯一识别真实端口，所以新增两个 domain 的置信度为
+medium，后续仍需 ratio sweep。
+
+### 5.3 计算时序
+
+下表同时列出 recipe interval 和绑定后的每个 part-stream interval。
+
+| 操作 | 分解 | Latency | Recipe interval | Bound interval | Occupancy | 是否流水化 |
+|---|---|---:|---:|---:|---:|---|
+| ZMM add/sub/mul | 2 x 256-bit | 3 | 0.5 | 1 | 1 | 是 |
+| ZMM FMA/FNMADD | 2 x 256-bit | 4 | 0.5 | 1 | 1 | 是 |
+| ZMM max/min | 2 x 256-bit | 2 | 0.5 | 1 | 1 | 是 |
+| XMM/YMM max | 1 uop | 2 | 0.5 | 0.5 | 1 | 是 |
+| XMM/YMM add | 1 uop | 3 | 0.5 | 0.5 | 1 | 是 |
+| FP32 -> I32 conversion | 2 x 256-bit | 4 | 0.5 | 1 | 1 | 是 |
+| I32 -> FP32 conversion | 2 x 256-bit | 3 | 0.5 | 1 | 1 | 是 |
+| ZMM integer add/shift | 2 x 256-bit | 1 | 0.5 | 0.5 | 1 | latency 等于 occupancy |
+| Register/memory broadcast | 1 uop | 2 | 1 | 1 | 1 | 是 |
+| Integer broadcast | 1 uop | 1 | 1 | 1 | 1 | latency 等于 occupancy |
+| Eliminated vector move | 1 uop | 0 | 0.5 | 0.5 | 1 | 零结果延迟的等效模型 |
+| `vextractf64x4` | 1 uop | 2 | 1 | 1 | 1 | 是 |
+| `vextractf128` | 1 uop | 4 | 1 | 1 | 1 | 是 |
+| XMM permute/shuffle | 1 uop | 1 | 0.5 | 0.5 | 1 | latency 等于 occupancy |
 
 以 ZMM FMA 为例：每个 256-bit part 的结果 latency 为 4 cycle，但资源 occupancy
 只有 1 cycle，因此是流水线执行。独立 FMA part 可以继续进入执行资源；只有读取该
@@ -193,13 +265,19 @@ Scalar divide 不会把资源锁住完整的 11 cycle。它占用唯一 divide l
 
 1. 所有 RAW、地址、flags 或内存依赖已经完成；
 2. ZMM part order 和 part gap 满足；
-3. 同 scheduling class 的 issue interval 满足；
-4. 至少一个候选资源 lane 空闲；
-5. load/store 的带宽和 outstanding 限制满足；
-6. 所属共享 issue domain 有空闲 lane。
+3. memory-source FMA 的跨迭代待发射组限制满足；
+4. 同 scheduling class 的 issue interval 满足；
+5. 至少一个候选资源 lane 空闲；
+6. load/store 的带宽和 outstanding 限制满足；
+7. 所属每个共享 issue domain 都有足够 token 满足 `issue_domain_demands`。
 
 发射后，资源 lane 在 `now + occupancy` 释放，结果在 `now + latency` 完成。这种分离
 使模拟器能同时表达流水化执行、非完全流水化执行、多资源并行和长延迟访存。
+
+共享域也按 occupancy 保留 token。对于某个域需求为 `d` 的 uop，后端检查该域第 `d`
+个最早可用 token；若其释放时间晚于当前 tick，则该 uop 以 `issue_domain_busy` 阻塞。
+发射时会同时占用最早可用的 `d` 个 token。多个域的检查取交集，任何一域不满足都不能
+发射。
 
 ## 8. 当前模型边界
 

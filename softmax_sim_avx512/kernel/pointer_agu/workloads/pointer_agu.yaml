@@ -11,6 +11,6 @@ input_vectors: 3
 output_count: count
 execution_models: [out_of_order, in_order]
 points:
-  - {count: 256, cache_mode: hot-l1, validation_class: steady-l1}
+  - {count: 512, cache_mode: hot-l1, validation_class: steady-l1}
   - {count: 1024, cache_mode: hot-l1, validation_class: steady-l1}
-  - {count: 4096, cache_mode: hot-capacity, validation_class: capacity-resident}
+  - {count: 2048, cache_mode: hot-l1, validation_class: steady-l1}

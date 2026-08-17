@@ -10,6 +10,7 @@ from typing import Any, Literal
 from .model import BoundTrace, ExecutionUop, MacroOp, VECTOR_RESOURCE_KINDS
 from .memory import CacheMode, MemoryHierarchy
 from .profile import Profile
+from .semantic import semantic_id
 from .trace import validate_bound_trace
 
 
@@ -60,6 +61,10 @@ class SimulationResult:
                     "semantic_ids": list(uop.semantic_ids),
                     "kind": uop.kind,
                     "scheduling_class": uop.scheduling_class,
+                    "issue_domains": list(uop.issue_domains),
+                    "issue_domain_demands": dict(
+                        sorted(uop.issue_domain_demands.items())
+                    ),
                     "resource": uop.resource,
                     "resource_lane": uop.resource_lane,
                     "memory_level": uop.memory_level,
@@ -87,6 +92,7 @@ class Engine:
         profile: Profile,
         execution_model: ExecutionModel,
         cache_mode: CacheMode,
+        memory_compute_overlap_limit: bool | None = None,
     ):
         if execution_model not in {"out_of_order", "in_order"}:
             raise SimulatorError(f"unknown execution model: {execution_model}")
@@ -114,6 +120,38 @@ class Engine:
             domain_id: [0] * int(entry["capacity"])
             for domain_id, entry in profile.data["issue_domains"].items()
         }
+        unknown_issue_domains = sorted(
+            {
+                domain_id
+                for uop in self.trace.uops
+                for domain_id in uop.issue_domains
+                if domain_id not in self.issue_domain_free
+            }
+        )
+        if unknown_issue_domains:
+            raise SimulatorError(
+                "bound trace references unknown issue domains: "
+                + ", ".join(unknown_issue_domains)
+            )
+        overlap = profile.memory_compute_overlap_limit
+        self.memory_compute_overlap_limit_enabled = (
+            bool(overlap["enabled"])
+            if memory_compute_overlap_limit is None
+            else memory_compute_overlap_limit
+        )
+        self.max_pending_memory_compute_groups = int(overlap["max_pending_groups"])
+        self.memory_compute_semantic_kinds = frozenset(
+            str(value) for value in overlap["compute_semantic_kinds"]
+        )
+        self.semantic_kind_by_id = {
+            semantic_id(str(instruction["id"]), str(semantic["local_id"])): str(
+                semantic["kind"]
+            )
+            for instruction in self.trace.source_trace.get("instructions", [])
+            for semantic in instruction.get("semantic_uops", [])
+        }
+        self.memory_compute_groups = self._discover_memory_compute_groups()
+        self.pending_memory_compute_groups: set[str] = set()
         self.next_dispatch = 0
         self.in_order_issue_index = 0
         self.rob_occupancy = 0
@@ -170,6 +208,15 @@ class Engine:
                 )
             ),
             "cache_line_accesses": dict(self.memory.hits),
+            "memory_compute_overlap_limit": {
+                "enabled": self.memory_compute_overlap_limit_enabled,
+                "max_pending_groups": self.max_pending_memory_compute_groups,
+                "compute_semantic_kinds": sorted(
+                    self.memory_compute_semantic_kinds
+                ),
+                "eligible_groups": len(self.memory_compute_groups),
+                "peak_pending_groups": self.peaks["memory_compute_pending_groups"],
+            },
         }
         return SimulationResult(
             execution_model=self.execution_model,
@@ -302,12 +349,8 @@ class Engine:
                     uop.latency_ticks = access.latency_ticks
             self.resource_free[resource_id][lane] = now + uop.occupancy_ticks
             self.last_class_issue[uop.scheduling_class] = now
-            for domain_id in uop.issue_domains:
-                lane = min(
-                    range(len(self.issue_domain_free[domain_id])),
-                    key=self.issue_domain_free[domain_id].__getitem__,
-                )
-                self.issue_domain_free[domain_id][lane] = now + uop.occupancy_ticks
+            self._reserve_issue_domains(uop, now)
+            self._update_memory_compute_groups_after_issue(uop)
             if uop.kind in VECTOR_RESOURCE_KINDS:
                 parent = self.macros[uop.parent_id]
                 if not any(
@@ -367,6 +410,8 @@ class Engine:
             earliest = previous.issue_tick + uop.issue_gap_ticks
             if earliest > now:
                 return "part_gap", earliest
+        if self._memory_compute_overlap_blocked(uop):
+            return "memory_compute_overlap_limit", math.inf
         last_issue = self.last_class_issue.get(uop.scheduling_class)
         if last_issue is not None:
             earliest = last_issue + uop.issue_interval_ticks
@@ -381,10 +426,109 @@ class Engine:
             reason, earliest = self.memory.blocker(uop, now)
             if reason:
                 return reason, earliest
-        if any(min(self.issue_domain_free[value]) > now for value in uop.issue_domains):
-            earliest = max(min(self.issue_domain_free[value]) for value in uop.issue_domains)
+        domain_ready_ticks = [
+            self._issue_domain_ready_tick(uop, domain_id)
+            for domain_id in uop.issue_domains
+        ]
+        if any(ready_tick > now for ready_tick in domain_ready_ticks):
+            earliest = max(domain_ready_ticks)
             return "issue_domain_busy", earliest
         return None, now
+
+    @staticmethod
+    def _issue_domain_demand(uop: ExecutionUop, domain_id: str) -> int:
+        return uop.issue_domain_demands.get(domain_id, 1)
+
+    def _issue_domain_ready_tick(
+        self, uop: ExecutionUop, domain_id: str
+    ) -> int:
+        free_ticks = self.issue_domain_free[domain_id]
+        demand = self._issue_domain_demand(uop, domain_id)
+        if demand > len(free_ticks):
+            raise SimulatorError(
+                f"uop {uop.id} demand {demand} exceeds issue domain "
+                f"{domain_id} capacity {len(free_ticks)}"
+            )
+        return sorted(free_ticks)[demand - 1]
+
+    def _reserve_issue_domains(self, uop: ExecutionUop, now: int) -> None:
+        for domain_id in uop.issue_domains:
+            free_ticks = self.issue_domain_free[domain_id]
+            demand = self._issue_domain_demand(uop, domain_id)
+            lanes = sorted(
+                range(len(free_ticks)),
+                key=lambda lane: (free_ticks[lane], lane),
+            )[:demand]
+            if any(free_ticks[lane] > now for lane in lanes):
+                raise SimulatorError(
+                    f"reserved unavailable issue-domain token for uop {uop.id}"
+                )
+            for lane in lanes:
+                free_ticks[lane] = now + uop.occupancy_ticks
+
+    def _discover_memory_compute_groups(self) -> dict[str, frozenset[str]]:
+        groups: dict[str, frozenset[str]] = {}
+        for macro in self.trace.macros:
+            macro_uops = {uop_id: self.uops[uop_id] for uop_id in macro.uop_ids}
+            load_ids = {
+                uop_id for uop_id, uop in macro_uops.items() if uop.kind == "load_data"
+            }
+            if not load_ids:
+                continue
+            dependent_compute_ids = {
+                uop_id
+                for uop_id, uop in macro_uops.items()
+                if any(
+                    self.semantic_kind_by_id.get(semantic)
+                    in self.memory_compute_semantic_kinds
+                    for semantic in uop.semantic_ids
+                )
+                and self._depends_transitively_on_any(uop, load_ids, macro_uops)
+            }
+            if dependent_compute_ids:
+                groups[macro.id] = frozenset(dependent_compute_ids)
+        return groups
+
+    @staticmethod
+    def _depends_transitively_on_any(
+        uop: ExecutionUop,
+        targets: set[str],
+        macro_uops: dict[str, ExecutionUop],
+    ) -> bool:
+        pending = list(uop.dependencies)
+        visited: set[str] = set()
+        while pending:
+            dependency = pending.pop()
+            if dependency in targets:
+                return True
+            if dependency in visited or dependency not in macro_uops:
+                continue
+            visited.add(dependency)
+            pending.extend(macro_uops[dependency].dependencies)
+        return False
+
+    def _memory_compute_overlap_blocked(self, uop: ExecutionUop) -> bool:
+        return (
+            self.memory_compute_overlap_limit_enabled
+            and uop.kind == "load_data"
+            and uop.parent_id in self.memory_compute_groups
+            and uop.parent_id not in self.pending_memory_compute_groups
+            and len(self.pending_memory_compute_groups)
+            >= self.max_pending_memory_compute_groups
+        )
+
+    def _update_memory_compute_groups_after_issue(self, uop: ExecutionUop) -> None:
+        if not self.memory_compute_overlap_limit_enabled:
+            return
+        compute_ids = self.memory_compute_groups.get(uop.parent_id)
+        if compute_ids is None:
+            return
+        if uop.kind == "load_data":
+            self.pending_memory_compute_groups.add(uop.parent_id)
+        if uop.id in compute_ids and all(
+            self.uops[uop_id].issue_tick is not None for uop_id in compute_ids
+        ):
+            self.pending_memory_compute_groups.discard(uop.parent_id)
 
     def _select_resource(self, uop: ExecutionUop, now: int) -> tuple[str, int]:
         choices: list[tuple[int, str, int]] = []
@@ -446,7 +590,7 @@ class Engine:
                 if interval_tick > now:
                     candidates.append(interval_tick)
             for domain_id in uop.issue_domains:
-                domain_tick = min(self.issue_domain_free[domain_id])
+                domain_tick = self._issue_domain_ready_tick(uop, domain_id)
                 if domain_tick > now:
                     candidates.append(domain_tick)
         if not candidates:
@@ -468,6 +612,10 @@ class Engine:
         )
         self.peaks["store_queue"] = max(
             self.peaks["store_queue"], self.store_queue_occupancy
+        )
+        self.peaks["memory_compute_pending_groups"] = max(
+            self.peaks["memory_compute_pending_groups"],
+            len(self.pending_memory_compute_groups),
         )
 
     @staticmethod
@@ -491,5 +639,12 @@ def simulate(
     profile: Profile,
     execution_model: ExecutionModel = "out_of_order",
     cache_mode: CacheMode = "hot-l1",
+    memory_compute_overlap_limit: bool | None = None,
 ) -> SimulationResult:
-    return Engine(trace, profile, execution_model, cache_mode).run()
+    return Engine(
+        trace,
+        profile,
+        execution_model,
+        cache_mode,
+        memory_compute_overlap_limit,
+    ).run()

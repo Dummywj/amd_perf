@@ -20,7 +20,11 @@
 - [补充内存流 JSON](results/zen4-20260805/supplemental-memory.json)
 - [补充内存流统计](results/zen4-20260805/supplemental-memory-summary.md)
 - [实验环境](results/zen4-20260805/environment.txt)
-- [测试二进制反汇编](results/zen4-20260805/disassembly.txt)
+- 2026-08-05 测试二进制完整反汇编：本地生成物，按仓库规则不纳入 Git
+- [ZMM 资源竞争原始 JSON](results/zen4-zmm-contention-20260817/raw.json)
+- [ZMM 资源竞争自动统计](results/zen4-zmm-contention-20260817/summary.md)
+- [ZMM 资源竞争环境](results/zen4-zmm-contention-20260817/environment.txt)
+- [ZMM 资源竞争聚焦反汇编](results/zen4-zmm-contention-20260817/disassembly_excerpt.txt)
 
 主运行命令：
 
@@ -100,7 +104,35 @@ Vector 测试得到的 120 明显大于两个 32-entry scheduler 的合计 64，
 
 当前 `resources.vector-fp.capacity=4` 表示公开资料中的 FP/vector aggregate pipe 数，但 `vaddps` 只表现出 2 个 256-bit op/cycle 的有效吞吐。建议保留 aggregate 4，同时在 recipe/eligibility 中限制具体 opcode；若模拟器当前无法表达 eligibility，则对 `vaddps` 使用等效容量 2，不能直接让它使用全部 4 个 pipe。
 
-### 5.2 地址与数据通路
+### 5.2 ZMM conversion、FMA 与 integer 资源竞争补测
+
+2026-08-17 在相同 CPU 8、NUMA node 0 上增加了三类 ZMM 单流基线和三组混合流，每点 7 次 repetition。三组循环体均含 64 条目标指令，反汇编确认其配比分别为 1:1、1:1 和 1:1:2；retired-ZMM/目标指令中位数为 `1.00001` 至 `1.00004`。
+
+| 测试 | 总 IPC 中位数 | 各类 IPC | 相对 ZMM 单流利用率 | 静态源操作数/cycle |
+|---|---:|---|---|---:|
+| conversion 单流 | 0.99797 | conversion 0.99797 | 100% | - |
+| FMA 单流 | 0.99792 | FMA 0.99792 | 100% | - |
+| integer 单流 | 1.99337 | integer 1.99337 | 100% | - |
+| conversion + integer，1:1 | 1.99245 | 0.99623 / 0.99623 | 99.83% / 49.98% | 2.98868 |
+| FMA + integer，1:1 | 1.51607 | 0.75803 / 0.75803 | 75.96% / 38.03% | 3.79017 |
+| conversion + FMA + integer，1:1:2 | 1.99277 | 0.49819 / 0.49819 / 0.99638 | 49.92% / 49.92% / 49.98% | 3.98553 |
+
+接受轮次的所有主指标 CV 不超过 1.73%，PMU running ratio 均为 1.0。首轮精确
+`vcvttps2dq` 测量中 FMA+integer 的 CV 为 3.09%，已按门禁拒绝并完整重跑。结果给出以下
+等效模型约束：
+
+- conversion 在保持约 100% 单流吞吐时，integer 仍达到约 1 ZMM instruction/cycle，因此二者不能放入一个完全共享、不可并行的窄 issue domain；integer 必须有额外资格容量。
+- 三类 1:1:2 流中，conversion+FMA 合计约 0.997 ZMM instruction/cycle，同时 integer 约 0.997，支持 conversion/FMA 的窄共享域与 integer 的并发资格分开表达。
+- FMA+integer 1:1 只达到 1.516 IPC，明显低于 conversion+integer。按显式 ISA 源操作数计数，FMA、integer、conversion 的需求权重分别为 3、2、1；后两组混合流达到约 3.79 和 3.99 个 ZMM 源操作数/cycle。这支持增加一个约 4 个 ZMM 源操作数/cycle、即 8 个 256-bit source-token/cycle 的加权 operand-delivery issue domain 候选，但它仍需与 opcode 端口资格联合使用。
+
+这里的源操作数是 ISA 静态需求，不等同于已观测到的物理寄存器文件读取。微基准只能约束共享域、权重和资格集合，不能唯一反演物理 pipe 编号。
+
+本轮 conversion 指令使用 kernel 对应的截断转换 `vcvttps2dq`。反向转换
+`vcvtdq2ps` 未被本组实验直接覆盖，其 recipe 继续标记为 provisional。当前只有三个固定
+配比点，因此新增的 4 part-token/cycle 和 8 source-token/cycle 均为中等置信度等效约束；
+还需 ratio sweep 才能判断是否存在同样符合现有数据的其他约束组合。
+
+### 5.3 地址与数据通路
 
 | L1 测试 | 中位数 |
 |---|---:|
@@ -116,7 +148,7 @@ Vector 测试得到的 120 明显大于两个 32-entry scheduler 的合计 64，
 
 物理 store 相关 pipe/AGU 数可能为 2，但地址生成已经由独立资源描述。审核决定 `store-data` 表示真正的数据写入吞吐，因此采用每周期一个 256-bit store，即 capacity 1、32 B/cycle。
 
-### 5.3 `vaddps:zmm,zmm,zmm`
+### 5.4 `vaddps:zmm,zmm,zmm`
 
 | Recipe 字段 | 观测 | 候选 |
 |---|---:|---:|

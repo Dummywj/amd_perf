@@ -8,6 +8,7 @@ build_dir=${BUILD_DIR:-"${project_dir}/build"}
 cpu=${CPU:-8}
 numa_node=${NUMA_NODE:-0}
 repetitions=${REPETITIONS:-7}
+benchmark_filter=${BENCHMARK_FILTER:-}
 result_dir=${1:-"${project_dir}/results/run-$(date +%Y%m%d-%H%M%S)"}
 
 mkdir -p "${result_dir}"
@@ -28,6 +29,10 @@ binary="${build_dir}/amd_profile_benchmark"
   perf --version
   c++ --version
   cmake --version
+  printf 'cpu=%s\n' "${cpu}"
+  printf 'numa_node=%s\n' "${numa_node}"
+  printf 'repetitions=%s\n' "${repetitions}"
+  printf 'benchmark_filter=%s\n' "${benchmark_filter:-<all>}"
   git -C "${repo_dir}" rev-parse HEAD
   git -C "${repo_dir}" status --short
   git -C "${repo_dir}/third_party/google-benchmark" describe --tags --always
@@ -35,13 +40,21 @@ binary="${build_dir}/amd_profile_benchmark"
 
 objdump -d --no-show-raw-insn --demangle "${binary}" \
   >"${result_dir}/disassembly.txt"
+python3 "${script_dir}/extract_zmm_disassembly.py" \
+  "${result_dir}/disassembly.txt" "${result_dir}/disassembly_excerpt.txt"
+
+benchmark_args=(
+  "--benchmark_repetitions=${repetitions}"
+  "--benchmark_report_aggregates_only=false"
+  "--benchmark_out=${result_dir}/raw.json"
+  "--benchmark_out_format=json"
+)
+if [[ -n "${benchmark_filter}" ]]; then
+  benchmark_args+=("--benchmark_filter=${benchmark_filter}")
+fi
 
 numactl --physcpubind="${cpu}" --membind="${numa_node}" \
-  "${binary}" \
-  --benchmark_repetitions="${repetitions}" \
-  --benchmark_report_aggregates_only=false \
-  --benchmark_out="${result_dir}/raw.json" \
-  --benchmark_out_format=json
+  "${binary}" "${benchmark_args[@]}"
 
 python3 "${script_dir}/summarize.py" \
   "${result_dir}/raw.json" "${result_dir}/summary.md"

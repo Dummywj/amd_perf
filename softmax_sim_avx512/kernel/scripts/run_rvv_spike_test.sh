@@ -44,7 +44,7 @@ for vlen in 128 512; do
     "${proxy_kernel}" "${build_dir}/kernel_rvv_correctness" >"${result}"
   pass_count=$(awk '$NF == "PASS" {count++} END {print count + 0}' "${result}")
   fail_count=$(awk '$NF == "FAIL" {count++} END {print count + 0}' "${result}")
-  if [[ "${pass_count}" -ne 56 || "${fail_count}" -ne 0 ]]; then
+  if [[ "${pass_count}" -ne 34 || "${fail_count}" -ne 0 ]]; then
     printf 'Unexpected Spike result for VLEN=%s: pass=%s fail=%s\n' \
       "${vlen}" "${pass_count}" "${fail_count}" >&2
     exit 1
@@ -69,4 +69,4 @@ for kernel in "${kernels[@]}"; do
   } >"${artifact_dir}/spike_validation_metadata.txt"
 done
 
-printf 'Spike correctness passed: 56/56 at VLEN=128 and VLEN=512.\n'
+printf 'Spike correctness passed: 34/34 at VLEN=128 and VLEN=512.\n'

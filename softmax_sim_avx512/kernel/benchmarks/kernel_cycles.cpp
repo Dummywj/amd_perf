@@ -93,7 +93,7 @@ int main(int argc, char** argv) {
     const std::string selected = argc > 1 ? argv[1] : "all";
     const int repetitions = argc > 2 ? std::stoi(argv[2]) : 7;
     if (repetitions < 1) throw std::invalid_argument("repetitions must be positive");
-    constexpr std::size_t kMaximumCount = 4096;
+    constexpr std::size_t kMaximumCount = 2048;
     AlignedBuffer<float> input(kMaximumCount * 3);
     AlignedBuffer<float> output(kMaximumCount);
     for (std::size_t index = 0; index < kMaximumCount * 3; ++index) {
@@ -106,7 +106,7 @@ int main(int argc, char** argv) {
     bool first = true;
     for (const KernelSpec& spec : kKernelSpecs) {
       if (selected != "all" && selected != spec.name) continue;
-      for (std::size_t count : {256U, 1024U, 4096U}) {
+      for (std::size_t count : {512U, 1024U, 2048U}) {
         const std::uint64_t calls =
             std::max<std::uint64_t>(1024, (2ULL * 1024 * 1024) / count);
         for (int warmup = 0; warmup < 32; ++warmup)

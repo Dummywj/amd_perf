@@ -42,23 +42,23 @@ DEFINE_ADD_THROUGHPUT_KERNEL(RunZmmAddThroughput, "zmm")
 #undef DEFINE_ADD_THROUGHPUT_KERNEL
 #undef ADD8
 
-#define YMM_OP8(op)                                                           \
-  op " %%ymm16, %%ymm17, %%ymm0\n\t"                                        \
-  op " %%ymm16, %%ymm17, %%ymm1\n\t"                                        \
-  op " %%ymm16, %%ymm17, %%ymm2\n\t"                                        \
-  op " %%ymm16, %%ymm17, %%ymm3\n\t"                                        \
-  op " %%ymm16, %%ymm17, %%ymm4\n\t"                                        \
-  op " %%ymm16, %%ymm17, %%ymm5\n\t"                                        \
-  op " %%ymm16, %%ymm17, %%ymm6\n\t"                                        \
-  op " %%ymm16, %%ymm17, %%ymm7\n\t"
+#define VECTOR_OP8(op, reg)                                                   \
+  op " %%" reg "16, %%" reg "17, %%" reg "0\n\t"                        \
+  op " %%" reg "16, %%" reg "17, %%" reg "1\n\t"                        \
+  op " %%" reg "16, %%" reg "17, %%" reg "2\n\t"                        \
+  op " %%" reg "16, %%" reg "17, %%" reg "3\n\t"                        \
+  op " %%" reg "16, %%" reg "17, %%" reg "4\n\t"                        \
+  op " %%" reg "16, %%" reg "17, %%" reg "5\n\t"                        \
+  op " %%" reg "16, %%" reg "17, %%" reg "6\n\t"                        \
+  op " %%" reg "16, %%" reg "17, %%" reg "7\n\t"
 
-#define DEFINE_YMM_THREE_OPERAND_KERNEL(name, op)                            \
+#define DEFINE_THREE_OPERAND_KERNEL(name, op, reg)                           \
   __attribute__((noinline)) void name(int blocks) {                          \
     asm volatile("vpxord %%zmm16, %%zmm16, %%zmm16\n\t"                   \
                  "vpxord %%zmm17, %%zmm17, %%zmm17\n\t"                   \
                  "1:\n\t"                                                   \
                  ".rept 8\n\t"                                              \
-                 YMM_OP8(op)                                                 \
+                 VECTOR_OP8(op, reg)                                         \
                  ".endr\n\t"                                                \
                  "decl %[blocks]\n\t"                                       \
                  "jne 1b\n\t"                                               \
@@ -69,12 +69,14 @@ DEFINE_ADD_THROUGHPUT_KERNEL(RunZmmAddThroughput, "zmm")
                    "zmm17");                                                \
   }
 
-DEFINE_YMM_THREE_OPERAND_KERNEL(RunYmmFmaThroughput, "vfmadd231ps")
-DEFINE_YMM_THREE_OPERAND_KERNEL(RunYmmIntegerThroughput, "vpaddd")
-DEFINE_YMM_THREE_OPERAND_KERNEL(RunYmmShuffleThroughput, "vpermps")
+DEFINE_THREE_OPERAND_KERNEL(RunYmmFmaThroughput, "vfmadd231ps", "ymm")
+DEFINE_THREE_OPERAND_KERNEL(RunYmmIntegerThroughput, "vpaddd", "ymm")
+DEFINE_THREE_OPERAND_KERNEL(RunYmmShuffleThroughput, "vpermps", "ymm")
+DEFINE_THREE_OPERAND_KERNEL(RunZmmFmaThroughput, "vfmadd231ps", "zmm")
+DEFINE_THREE_OPERAND_KERNEL(RunZmmIntegerThroughput, "vpaddd", "zmm")
 
-#undef DEFINE_YMM_THREE_OPERAND_KERNEL
-#undef YMM_OP8
+#undef DEFINE_THREE_OPERAND_KERNEL
+#undef VECTOR_OP8
 
 __attribute__((noinline)) void RunYmmConvertThroughput(int blocks) {
   asm volatile(
@@ -89,6 +91,28 @@ __attribute__((noinline)) void RunYmmConvertThroughput(int blocks) {
       "vcvtps2dq %%ymm16, %%ymm5\n\t"
       "vcvtps2dq %%ymm16, %%ymm6\n\t"
       "vcvtps2dq %%ymm16, %%ymm7\n\t"
+      ".endr\n\t"
+      "decl %[blocks]\n\t"
+      "jne 1b\n\t"
+      : [blocks] "+r"(blocks)
+      :
+      : "cc", "memory", "zmm0", "zmm1", "zmm2", "zmm3", "zmm4",
+        "zmm5", "zmm6", "zmm7", "zmm16");
+}
+
+__attribute__((noinline)) void RunZmmTruncateConvertThroughput(int blocks) {
+  asm volatile(
+      "vpxord %%zmm16, %%zmm16, %%zmm16\n\t"
+      "1:\n\t"
+      ".rept 8\n\t"
+      "vcvttps2dq %%zmm16, %%zmm0\n\t"
+      "vcvttps2dq %%zmm16, %%zmm1\n\t"
+      "vcvttps2dq %%zmm16, %%zmm2\n\t"
+      "vcvttps2dq %%zmm16, %%zmm3\n\t"
+      "vcvttps2dq %%zmm16, %%zmm4\n\t"
+      "vcvttps2dq %%zmm16, %%zmm5\n\t"
+      "vcvttps2dq %%zmm16, %%zmm6\n\t"
+      "vcvttps2dq %%zmm16, %%zmm7\n\t"
       ".endr\n\t"
       "decl %[blocks]\n\t"
       "jne 1b\n\t"
@@ -141,6 +165,10 @@ DEFINE_BENCHMARK(BM_VfmaddpsThroughputYmm, RunYmmFmaThroughput, 0x10);
 DEFINE_BENCHMARK(BM_VpadddThroughputYmm, RunYmmIntegerThroughput, 0x10);
 DEFINE_BENCHMARK(BM_VpermpsThroughputYmm, RunYmmShuffleThroughput, 0x10);
 DEFINE_BENCHMARK(BM_Vcvtps2dqThroughputYmm, RunYmmConvertThroughput, 0x10);
+DEFINE_BENCHMARK(BM_VfmaddpsThroughputZmm, RunZmmFmaThroughput, 0x20);
+DEFINE_BENCHMARK(BM_VpadddThroughputZmm, RunZmmIntegerThroughput, 0x20);
+DEFINE_BENCHMARK(BM_Vcvttps2dqThroughputZmm,
+                 RunZmmTruncateConvertThroughput, 0x20);
 
 #undef DEFINE_BENCHMARK
 

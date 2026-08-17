@@ -10,7 +10,11 @@ from typing import Any
 import yaml
 
 from .model import BoundTrace, ExecutionUop, MacroOp, Resource, VECTOR_RESOURCE_KINDS
-from .semantic import SemanticBindingError, bind_execution_semantics
+from .semantic import (
+    SEMANTIC_EXECUTION_KINDS,
+    SemanticBindingError,
+    bind_execution_semantics,
+)
 
 
 class ProfileError(ValueError):
@@ -42,7 +46,56 @@ class Profile:
         self.data = data
         self.digest = digest
         self.id = str(data["profile_id"])
+        overlap_kinds = set(
+            data["memory_compute_overlap_limit"]["compute_semantic_kinds"]
+        )
+        unknown_overlap_kinds = overlap_kinds - SEMANTIC_EXECUTION_KINDS.keys()
+        if unknown_overlap_kinds:
+            raise ProfileError(
+                "unknown memory-compute semantic kinds: "
+                + ", ".join(sorted(unknown_overlap_kinds))
+            )
+        self._validate_issue_domains()
         self.ticks_per_cycle = self._ticks_per_cycle()
+
+    def _validate_issue_domains(self) -> None:
+        domains = self.data["issue_domains"]
+        for recipe_id, recipe in self.data["recipes"].items():
+            for uop in recipe["uops"]:
+                issue_domains = tuple(uop.get("issue_domains", []))
+                demands = uop.get("issue_domain_demands", {})
+                if not isinstance(demands, dict):
+                    raise ProfileError(
+                        f"recipe {recipe_id} uop {uop['id']} issue-domain demands "
+                        "must be a mapping"
+                    )
+                unlisted = set(demands) - set(issue_domains)
+                if unlisted:
+                    raise ProfileError(
+                        f"recipe {recipe_id} uop {uop['id']} has demand for "
+                        "unlisted issue domain: " + ", ".join(sorted(unlisted))
+                    )
+                for domain_id in issue_domains:
+                    if domain_id not in domains:
+                        raise ProfileError(
+                            f"recipe references missing issue domain: {domain_id}"
+                        )
+                    demand = demands.get(domain_id, 1)
+                    if (
+                        isinstance(demand, bool)
+                        or not isinstance(demand, int)
+                        or demand < 1
+                    ):
+                        raise ProfileError(
+                            f"recipe {recipe_id} uop {uop['id']} has invalid demand "
+                            f"for issue domain {domain_id}: {demand!r}"
+                        )
+                    capacity = domains[domain_id]["capacity"]
+                    if isinstance(capacity, int) and demand > capacity:
+                        raise ProfileError(
+                            f"recipe {recipe_id} uop {uop['id']} demand {demand} "
+                            f"exceeds issue domain {domain_id} capacity {capacity}"
+                        )
 
     def _ticks_per_cycle(self) -> int:
         denominators = [1]
@@ -87,6 +140,10 @@ class Profile:
         return self.data["pipeline"]
 
     @property
+    def memory_compute_overlap_limit(self) -> dict[str, Any]:
+        return self.data["memory_compute_overlap_limit"]
+
+    @property
     def l1_latency_ticks(self) -> int:
         return self.ticks(self.data["memory"]["levels"]["l1d"]["latency_cycles"])
 
@@ -115,6 +172,8 @@ class Profile:
             for local_index, entry in enumerate(recipe["uops"]):
                 uop_id = f"{instruction['id']}.e{local_index}"
                 local_ids[entry["id"]] = uop_id
+                issue_domains = tuple(entry.get("issue_domains", []))
+                configured_demands = entry.get("issue_domain_demands", {})
                 memory = (
                     instruction.get("memory")
                     if entry["kind"] in {"load_data", "store_data", "address_generation"}
@@ -144,12 +203,22 @@ class Profile:
                         issue_interval_ticks=self.ticks(entry["issue_interval_cycles"])
                         * (
                             int(recipe["vector_decomposition"]["parts"])
-                            if "part_index" in entry and recipe.get("vector_decomposition")
+                            if (
+                                "part_index" in entry
+                                and recipe.get("vector_decomposition")
+                                and recipe["vector_decomposition"].get(
+                                    "scale_issue_interval_by_parts", True
+                                )
+                            )
                             else 1
                         ),
                         occupancy_ticks=occupancy,
                         resource_choices=tuple(entry["resource_choices"]),
-                        issue_domains=tuple(entry.get("issue_domains", [])),
+                        issue_domains=issue_domains,
+                        issue_domain_demands={
+                            domain_id: int(configured_demands.get(domain_id, 1))
+                            for domain_id in issue_domains
+                        },
                         semantic_ids=semantic_bindings[local_index],
                         memory=memory,
                     )
@@ -293,11 +362,6 @@ class Profile:
             for resource_id in uop["resource_choices"]:
                 if resource_id not in result:
                     raise ProfileError(f"fit references missing resource: {resource_id}")
-        for recipe in self.data["recipes"].values():
-            for uop in recipe["uops"]:
-                for domain_id in uop.get("issue_domains", []):
-                    if domain_id not in self.data["issue_domains"]:
-                        raise ProfileError(f"recipe references missing issue domain: {domain_id}")
         return result
 
 

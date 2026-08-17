@@ -1,4 +1,4 @@
-schema_version: 3
+schema_version: 4
 profile_id: amd-zen4-epyc-9684x
 profile_status: calibrated
 description: >-
@@ -76,6 +76,33 @@ issue_domains:
       YMM add+FMA and add+conversion mixed streams sustain about two total
       instructions per cycle. This is an effective eligibility constraint on
       top of the four-pipe aggregate vector-fp resource.
+  fma-convert-integer-total:
+    capacity: 4
+    evidence: [local-zmm-contention-benchmark]
+    notes: >-
+      Aggregate eligibility limit for FMA, conversion and vector-integer
+      execution. ZMM conversion+integer and 1:1:2 conversion+FMA+integer
+      streams sustain about two ZMM instructions, or four effective 256-bit
+      parts, per cycle.
+  zmm-register-source-delivery:
+    capacity: 8
+    evidence: [local-zmm-contention-benchmark]
+    notes: >-
+      Weighted effective source-delivery limit in 256-bit operand tokens.
+      Register-source conversion, FMA, integer-add, FP-add and shift parts
+      consume one, three, two, two and one tokens respectively; memory-source
+      recipes charge only their register operands. This is not a claim about
+      physical register-file ports; it summarizes the measured constraint.
+
+memory_compute_overlap_limit:
+  enabled: true
+  max_pending_groups: 2
+  compute_semantic_kinds: [vector_fp_fma]
+  notes: >-
+    Limits the number of memory-source vector-FMA macro-ops whose load has
+    issued while at least one dependent compute uop is still waiting to issue.
+    This is an effective scheduling constraint inferred from kernel validation,
+    not a claim about a physical Zen 4 structure or hidden uop decomposition.
 
 recipes:
   "vaddps:zmm,zmm,zmm":
@@ -95,7 +122,8 @@ recipes:
         resource_choices:
           - vector-fp
         resource_occupancy_cycles: 1
-        issue_domains: [fp-add-fma-convert]
+        issue_domains: [fp-add-fma-convert, zmm-register-source-delivery]
+        issue_domain_demands: {zmm-register-source-delivery: 2}
         part_index: 0
       - id: add-part-1
         kind: vector_fp
@@ -104,7 +132,8 @@ recipes:
         resource_choices:
           - vector-fp
         resource_occupancy_cycles: 1
-        issue_domains: [fp-add-fma-convert]
+        issue_domains: [fp-add-fma-convert, zmm-register-source-delivery]
+        issue_domain_demands: {zmm-register-source-delivery: 2}
         part_index: 1
     evidence:
       - amd-zen4-sog
@@ -460,7 +489,8 @@ recipes:
         issue_interval_cycles: 0.5
         resource_choices: [vector-fp]
         resource_occupancy_cycles: 1
-        issue_domains: [fp-add-fma-convert]
+        issue_domains: [fp-add-fma-convert, zmm-register-source-delivery]
+        issue_domain_demands: {zmm-register-source-delivery: 1}
         depends_on: [load]
         part_index: 0
       - id: fp-part-1
@@ -469,7 +499,8 @@ recipes:
         issue_interval_cycles: 0.5
         resource_choices: [vector-fp]
         resource_occupancy_cycles: 1
-        issue_domains: [fp-add-fma-convert]
+        issue_domains: [fp-add-fma-convert, zmm-register-source-delivery]
+        issue_domain_demands: {zmm-register-source-delivery: 1}
         depends_on: [load]
         part_index: 1
     evidence: [provisional-equivalent-decomposition, llvm-znver4-scheduling-model]
@@ -524,7 +555,8 @@ recipes:
         issue_interval_cycles: 0.5
         resource_choices: [vector-fp]
         resource_occupancy_cycles: 1
-        issue_domains: [fp-add-fma-convert]
+        issue_domains: [fp-add-fma-convert, fma-convert-integer-total, zmm-register-source-delivery]
+        issue_domain_demands: {zmm-register-source-delivery: 3}
         part_index: 0
       - id: fma-part-1
         kind: vector_fp
@@ -532,9 +564,10 @@ recipes:
         issue_interval_cycles: 0.5
         resource_choices: [vector-fp]
         resource_occupancy_cycles: 1
-        issue_domains: [fp-add-fma-convert]
+        issue_domains: [fp-add-fma-convert, fma-convert-integer-total, zmm-register-source-delivery]
+        issue_domain_demands: {zmm-register-source-delivery: 3}
         part_index: 1
-    evidence: [local-profile-benchmark, amd-epyc-9004-whitepaper, llvm-znver4-scheduling-model]
+    evidence: [local-profile-benchmark, local-zmm-contention-benchmark, amd-epyc-9004-whitepaper, llvm-znver4-scheduling-model]
   "vfnmadd132ps:zmm,zmm,zmm": *zmm_fma_recipe
   "vfmadd213ps:zmm,zmm,zmm": *zmm_fma_recipe
   "vfmadd231ps:zmm,zmm,zmm": *zmm_fma_recipe
@@ -563,7 +596,8 @@ recipes:
         issue_interval_cycles: 0.5
         resource_choices: [vector-fp]
         resource_occupancy_cycles: 1
-        issue_domains: [fp-add-fma-convert]
+        issue_domains: [fp-add-fma-convert, fma-convert-integer-total, zmm-register-source-delivery]
+        issue_domain_demands: {zmm-register-source-delivery: 2}
         depends_on: [load]
         part_index: 0
       - id: fma-part-1
@@ -572,7 +606,8 @@ recipes:
         issue_interval_cycles: 0.5
         resource_choices: [vector-fp]
         resource_occupancy_cycles: 1
-        issue_domains: [fp-add-fma-convert]
+        issue_domains: [fp-add-fma-convert, fma-convert-integer-total, zmm-register-source-delivery]
+        issue_domain_demands: {zmm-register-source-delivery: 2}
         depends_on: [load]
         part_index: 1
     evidence: [provisional-equivalent-decomposition, llvm-znver4-scheduling-model]
@@ -593,7 +628,8 @@ recipes:
         issue_interval_cycles: 0.5
         resource_choices: [conversion]
         resource_occupancy_cycles: 1
-        issue_domains: [fp-add-fma-convert]
+        issue_domains: [fp-add-fma-convert, fma-convert-integer-total, zmm-register-source-delivery]
+        issue_domain_demands: {zmm-register-source-delivery: 1}
         part_index: 0
       - id: convert-part-1
         kind: conversion
@@ -601,9 +637,10 @@ recipes:
         issue_interval_cycles: 0.5
         resource_choices: [conversion]
         resource_occupancy_cycles: 1
-        issue_domains: [fp-add-fma-convert]
+        issue_domains: [fp-add-fma-convert, fma-convert-integer-total, zmm-register-source-delivery]
+        issue_domain_demands: {zmm-register-source-delivery: 1}
         part_index: 1
-    evidence: [local-profile-benchmark, amd-epyc-9004-whitepaper, llvm-znver4-scheduling-model]
+    evidence: [local-profile-benchmark, local-zmm-contention-benchmark, amd-epyc-9004-whitepaper, llvm-znver4-scheduling-model]
   "vcvttps2dq:memory,zmm":
     required_features: [avx512f]
     decoded_macro_ops: 1
@@ -629,7 +666,7 @@ recipes:
         issue_interval_cycles: 0.5
         resource_choices: [conversion]
         resource_occupancy_cycles: 1
-        issue_domains: [fp-add-fma-convert]
+        issue_domains: [fp-add-fma-convert, fma-convert-integer-total]
         depends_on: [load]
         part_index: 0
       - id: convert-part-1
@@ -638,7 +675,7 @@ recipes:
         issue_interval_cycles: 0.5
         resource_choices: [conversion]
         resource_occupancy_cycles: 1
-        issue_domains: [fp-add-fma-convert]
+        issue_domains: [fp-add-fma-convert, fma-convert-integer-total]
         depends_on: [load]
         part_index: 1
     evidence: [provisional-equivalent-decomposition, llvm-znver4-scheduling-model]
@@ -654,7 +691,8 @@ recipes:
         issue_interval_cycles: 0.5
         resource_choices: [conversion]
         resource_occupancy_cycles: 1
-        issue_domains: [fp-add-fma-convert]
+        issue_domains: [fp-add-fma-convert, fma-convert-integer-total, zmm-register-source-delivery]
+        issue_domain_demands: {zmm-register-source-delivery: 1}
         part_index: 0
       - id: convert-part-1
         kind: conversion
@@ -662,13 +700,22 @@ recipes:
         issue_interval_cycles: 0.5
         resource_choices: [conversion]
         resource_occupancy_cycles: 1
-        issue_domains: [fp-add-fma-convert]
+        issue_domains: [fp-add-fma-convert, fma-convert-integer-total, zmm-register-source-delivery]
+        issue_domain_demands: {zmm-register-source-delivery: 1}
         part_index: 1
+    evidence: [llvm-znver4-scheduling-model]
+    notes: >-
+      Provisional inverse-conversion timing and eligibility. The local ZMM
+      contention benchmark covers vcvttps2dq, not this opcode.
   "vpaddd:zmm,zmm,zmm": &zmm_integer_recipe
     required_features: [avx512f]
     decoded_macro_ops: 1
     retire_macro_ops: 1
-    vector_decomposition: {parts: 2, part_width_bits: 256, part_issue_gap_cycles: 1}
+    vector_decomposition:
+      parts: 2
+      part_width_bits: 256
+      part_issue_gap_cycles: 1
+      scale_issue_interval_by_parts: false
     uops:
       - id: integer-part-0
         kind: vector_integer
@@ -676,6 +723,8 @@ recipes:
         issue_interval_cycles: 0.5
         resource_choices: [vector-integer]
         resource_occupancy_cycles: 1
+        issue_domains: [fma-convert-integer-total, zmm-register-source-delivery]
+        issue_domain_demands: {zmm-register-source-delivery: 2}
         part_index: 0
       - id: integer-part-1
         kind: vector_integer
@@ -683,13 +732,19 @@ recipes:
         issue_interval_cycles: 0.5
         resource_choices: [vector-integer]
         resource_occupancy_cycles: 1
+        issue_domains: [fma-convert-integer-total, zmm-register-source-delivery]
+        issue_domain_demands: {zmm-register-source-delivery: 2}
         part_index: 1
-    evidence: [local-profile-benchmark, amd-epyc-9004-whitepaper, llvm-znver4-scheduling-model]
+    evidence: [local-profile-benchmark, local-zmm-contention-benchmark, amd-epyc-9004-whitepaper, llvm-znver4-scheduling-model]
   "vpaddd:memory,zmm,zmm":
     required_features: [avx512f]
     decoded_macro_ops: 1
     retire_macro_ops: 1
-    vector_decomposition: {parts: 2, part_width_bits: 256, part_issue_gap_cycles: 1}
+    vector_decomposition:
+      parts: 2
+      part_width_bits: 256
+      part_issue_gap_cycles: 1
+      scale_issue_interval_by_parts: false
     uops:
       - id: agu
         kind: address_generation
@@ -710,6 +765,8 @@ recipes:
         issue_interval_cycles: 0.5
         resource_choices: [vector-integer]
         resource_occupancy_cycles: 1
+        issue_domains: [fma-convert-integer-total, zmm-register-source-delivery]
+        issue_domain_demands: {zmm-register-source-delivery: 1}
         depends_on: [load]
         part_index: 0
       - id: integer-part-1
@@ -718,13 +775,35 @@ recipes:
         issue_interval_cycles: 0.5
         resource_choices: [vector-integer]
         resource_occupancy_cycles: 1
+        issue_domains: [fma-convert-integer-total, zmm-register-source-delivery]
+        issue_domain_demands: {zmm-register-source-delivery: 1}
         depends_on: [load]
         part_index: 1
     evidence: [provisional-equivalent-decomposition, llvm-znver4-scheduling-model]
     notes: >-
       Provisional memory-source decomposition derived from the existing load
       and register integer models; this exact form was not locally calibrated.
-  "vpslld:immediate,zmm,zmm": *zmm_integer_recipe
+  "vpslld:immediate,zmm,zmm":
+    <<: *zmm_integer_recipe
+    uops:
+      - id: integer-part-0
+        kind: vector_integer
+        latency_cycles: 1
+        issue_interval_cycles: 0.5
+        resource_choices: [vector-integer]
+        resource_occupancy_cycles: 1
+        issue_domains: [fma-convert-integer-total, zmm-register-source-delivery]
+        issue_domain_demands: {zmm-register-source-delivery: 1}
+        part_index: 0
+      - id: integer-part-1
+        kind: vector_integer
+        latency_cycles: 1
+        issue_interval_cycles: 0.5
+        resource_choices: [vector-integer]
+        resource_occupancy_cycles: 1
+        issue_domains: [fma-convert-integer-total, zmm-register-source-delivery]
+        issue_domain_demands: {zmm-register-source-delivery: 1}
+        part_index: 1
   "vaddps:ymm,ymm,ymm": &narrow_add_recipe
     required_features: [avx]
     decoded_macro_ops: 1
@@ -843,7 +922,7 @@ memory:
 
 metadata:
   created_at: "2026-08-05T11:49:44+08:00"
-  last_calibrated_at: "2026-08-05T15:36:05+08:00"
+  last_calibrated_at: "2026-08-17T12:57:26+08:00"
   simulator_min_version: "0.3.0-dev"
   sources:
     - id: amd-zen4-sog
@@ -893,6 +972,19 @@ metadata:
       notes: >-
         Seven repetitions pinned to CPU 8 and NUMA node 0. The SMT sibling was
         idle; all PMU groups had a running ratio of 1.0.
+    - id: local-zmm-contention-benchmark
+      kind: measurement
+      title: AMD EPYC 9684X ZMM Resource Contention Benchmark
+      uri: ../../amd_profile_benchmark/results/zen4-zmm-contention-20260817/summary.md
+      accessed_on: "2026-08-17"
+      command: >-
+        BENCHMARK_FILTER='BM_(VfmaddpsThroughputZmm|VpadddThroughputZmm|Vcvttps2dqThroughputZmm|ContentionZmm.*)'
+        CPU=8 NUMA_NODE=0 REPETITIONS=7
+        amd_profile_benchmark/scripts/run_all.sh
+        amd_profile_benchmark/results/zen4-zmm-contention-20260817
+      notes: >-
+        The measurements identify effective overlapping eligibility sets.
+        They do not identify unique physical execution-port numbers.
     - id: llvm-znver4-scheduling-model
       kind: assumption
       title: LLVM znver4 scheduling model audit for scalar and control forms
@@ -904,6 +996,14 @@ metadata:
       notes: >-
         Provides auditable initial effective values only. These fields must be
         trained and validated separately from the frozen vector/memory fields.
+    - id: local-kernel-validation
+      kind: measurement
+      title: Load-to-compute kernel validation on AMD EPYC 9684X
+      uri: ../docs/kernel_result.md
+      accessed_on: "2026-08-17"
+      notes: >-
+        AXPY and vector triad isolated an optimistic memory-source FMA overlap;
+        mixed compute and pointer/AGU provide non-FMA comparison points.
   notes: >-
     This profile intentionally omits masks, gathers/scatters, slide-like
     operations, branch prediction, detailed frontend state, TLB, prefetch state
@@ -940,6 +1040,31 @@ evidence:
     sources: [local-profile-benchmark]
     confidence: medium
     notes: Effective interval [64, 72], midpoint 68.
+  - parameter: memory_compute_overlap_limit
+    sources: [local-kernel-validation]
+    confidence: low
+    notes: >-
+      Effective semantic-uop scheduling limit. The value must be validated on
+      additional kernels and is not interpreted as a physical queue capacity.
+  - parameter: issue_domains.fp-add-fma-convert
+    sources: [local-profile-benchmark]
+    confidence: high
+    notes: >-
+      Effective 256-bit-part eligibility limit for the locally measured
+      add/FMA/conversion mixed streams.
+  - parameter: issue_domains.fma-convert-integer-total
+    sources: [local-zmm-contention-benchmark]
+    confidence: medium
+    notes: >-
+      Four 256-bit part tokens reproduce the measured fixed-ratio streams, but
+      wider ratio sweeps are still needed to identify this bound uniquely.
+  - parameter: issue_domains.zmm-register-source-delivery
+    sources: [local-zmm-contention-benchmark]
+    confidence: medium
+    notes: >-
+      Eight weighted 256-bit source tokens reproduce the measured fixed-ratio
+      streams. This is not a physical register-file port count, and additional
+      ratios may expose a different equivalent constraint.
   - parameter: resources.vector-fp
     sources: [amd-zen4-sog, amd-epyc-9004-whitepaper]
     confidence: medium

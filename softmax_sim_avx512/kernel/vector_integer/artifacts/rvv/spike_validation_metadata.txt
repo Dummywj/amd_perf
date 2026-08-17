@@ -1,0 +1,6 @@
+spike_commit=3d8eb089bd289c59dcb506f197a172e02beb7b5b
+proxy_kernel_commit=9c61d29846d8521d9487a57739330f9682d5b542
+rvv_compiler=riscv64-linux-gnu-g++ (Ubuntu 13.3.0-6ubuntu2~24.04) 13.3.0
+target_isa=rv64gcv
+tested_vlen_bits=128,512
+result=PASS

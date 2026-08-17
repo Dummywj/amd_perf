@@ -1,0 +1,436 @@
+{
+  "trace_version": 1,
+  "isa": "x86",
+  "assembly": "kernel/vector_triad/artifacts/x86/vector_triad_avx512.s",
+  "function": "vector_triad_avx512_f32",
+  "input_mode": "assembly_only",
+  "provenance": {
+    "assembly_sha256": "3259cab721ddfa4dc9b700150c7bac9e9d36ce85206f969e3d72fc68609964a4",
+    "recipe_sha256": "75f021308eb45f536707b6678996fc4f701102a1fd1a909a08d7da036cc4ead9",
+    "uop_catalog_sha256": "dbfa44215a3d751980ca9a5456e1d2d0526ee8e1959b2b0ccc8ef7f6e8079c42"
+  },
+  "instructions": [
+    {
+      "index": 0,
+      "source_line": 7,
+      "mnemonic": "testq",
+      "form": "register",
+      "operands": [
+        "%rdx",
+        "%rdx"
+      ],
+      "width_bits": 32,
+      "uops": [
+        {
+          "kind": "scalar_alu",
+          "category": "scalar",
+          "execution_class": "scalar_alu",
+          "source_line": 7
+        }
+      ]
+    },
+    {
+      "index": 1,
+      "source_line": 8,
+      "mnemonic": "je",
+      "form": "register",
+      "operands": [
+        ".L8"
+      ],
+      "width_bits": 32,
+      "uops": [
+        {
+          "kind": "branch",
+          "category": "control",
+          "execution_class": "branch",
+          "source_line": 8
+        }
+      ]
+    },
+    {
+      "index": 2,
+      "source_line": 9,
+      "mnemonic": "vbroadcastss",
+      "form": "memory_load",
+      "operands": [
+        ".LC1(%rip)",
+        "%zmm1"
+      ],
+      "width_bits": 512,
+      "uops": [
+        {
+          "kind": "address_generation",
+          "category": "memory",
+          "execution_class": "address_generation",
+          "source_line": 9
+        },
+        {
+          "kind": "vector_load",
+          "category": "vector_memory",
+          "execution_class": "load_data",
+          "source_line": 9
+        },
+        {
+          "kind": "vector_broadcast",
+          "category": "vector_move",
+          "execution_class": "vector_fp",
+          "source_line": 9
+        }
+      ]
+    },
+    {
+      "index": 3,
+      "source_line": 10,
+      "mnemonic": "leaq",
+      "form": "memory_load",
+      "operands": [
+        "(%rdi,%rdx,4)",
+        "%rcx"
+      ],
+      "width_bits": 32,
+      "uops": [
+        {
+          "kind": "scalar_alu",
+          "category": "scalar",
+          "execution_class": "scalar_alu",
+          "source_line": 10
+        }
+      ]
+    },
+    {
+      "index": 4,
+      "source_line": 11,
+      "mnemonic": "xorl",
+      "form": "register",
+      "operands": [
+        "%eax",
+        "%eax"
+      ],
+      "width_bits": 32,
+      "uops": [
+        {
+          "kind": "scalar_alu",
+          "category": "scalar",
+          "execution_class": "scalar_alu",
+          "source_line": 11
+        }
+      ]
+    },
+    {
+      "index": 5,
+      "source_line": 15,
+      "mnemonic": "vmovups",
+      "form": "memory_load",
+      "operands": [
+        "(%rcx,%rax,4)",
+        "%zmm0"
+      ],
+      "width_bits": 512,
+      "uops": [
+        {
+          "kind": "address_generation",
+          "category": "memory",
+          "execution_class": "address_generation",
+          "source_line": 15
+        },
+        {
+          "kind": "vector_load",
+          "category": "vector_memory",
+          "execution_class": "load_data",
+          "source_line": 15
+        }
+      ]
+    },
+    {
+      "index": 6,
+      "source_line": 16,
+      "mnemonic": "vfmadd213ps",
+      "form": "memory_load",
+      "operands": [
+        "(%rdi,%rax,4)",
+        "%zmm1",
+        "%zmm0"
+      ],
+      "width_bits": 512,
+      "uops": [
+        {
+          "kind": "address_generation",
+          "category": "memory",
+          "execution_class": "address_generation",
+          "source_line": 16
+        },
+        {
+          "kind": "vector_load",
+          "category": "vector_memory",
+          "execution_class": "load_data",
+          "source_line": 16
+        },
+        {
+          "kind": "vector_fp_fma",
+          "category": "vector_compute",
+          "execution_class": "vector_fp",
+          "source_line": 16
+        }
+      ]
+    },
+    {
+      "index": 7,
+      "source_line": 17,
+      "mnemonic": "vmovups",
+      "form": "memory_store",
+      "operands": [
+        "%zmm0",
+        "(%rsi,%rax,4)"
+      ],
+      "width_bits": 512,
+      "uops": [
+        {
+          "kind": "address_generation",
+          "category": "memory",
+          "execution_class": "address_generation",
+          "source_line": 17
+        },
+        {
+          "kind": "vector_store",
+          "category": "vector_memory",
+          "execution_class": "store_data",
+          "source_line": 17
+        }
+      ]
+    },
+    {
+      "index": 8,
+      "source_line": 18,
+      "mnemonic": "addq",
+      "form": "register",
+      "operands": [
+        "$16",
+        "%rax"
+      ],
+      "width_bits": 32,
+      "uops": [
+        {
+          "kind": "scalar_alu",
+          "category": "scalar",
+          "execution_class": "scalar_alu",
+          "source_line": 18
+        }
+      ]
+    },
+    {
+      "index": 9,
+      "source_line": 19,
+      "mnemonic": "cmpq",
+      "form": "register",
+      "operands": [
+        "%rdx",
+        "%rax"
+      ],
+      "width_bits": 32,
+      "uops": [
+        {
+          "kind": "scalar_alu",
+          "category": "scalar",
+          "execution_class": "scalar_alu",
+          "source_line": 19
+        }
+      ]
+    },
+    {
+      "index": 10,
+      "source_line": 20,
+      "mnemonic": "jb",
+      "form": "register",
+      "operands": [
+        ".L3"
+      ],
+      "width_bits": 32,
+      "uops": [
+        {
+          "kind": "branch",
+          "category": "control",
+          "execution_class": "branch",
+          "source_line": 20
+        }
+      ]
+    },
+    {
+      "index": 11,
+      "source_line": 21,
+      "mnemonic": "vzeroupper",
+      "form": "register",
+      "operands": [],
+      "width_bits": 32,
+      "uops": [
+        {
+          "kind": "vector_config",
+          "category": "vector_control",
+          "execution_class": "vector_config",
+          "source_line": 21
+        }
+      ]
+    },
+    {
+      "index": 12,
+      "source_line": 23,
+      "mnemonic": "ret",
+      "form": "register",
+      "operands": [],
+      "width_bits": 32,
+      "uops": [
+        {
+          "kind": "return",
+          "category": "control",
+          "execution_class": "branch",
+          "source_line": 23
+        }
+      ]
+    }
+  ],
+  "uops": [
+    {
+      "kind": "scalar_alu",
+      "category": "scalar",
+      "execution_class": "scalar_alu",
+      "source_line": 7
+    },
+    {
+      "kind": "branch",
+      "category": "control",
+      "execution_class": "branch",
+      "source_line": 8
+    },
+    {
+      "kind": "address_generation",
+      "category": "memory",
+      "execution_class": "address_generation",
+      "source_line": 9
+    },
+    {
+      "kind": "vector_load",
+      "category": "vector_memory",
+      "execution_class": "load_data",
+      "source_line": 9
+    },
+    {
+      "kind": "vector_broadcast",
+      "category": "vector_move",
+      "execution_class": "vector_fp",
+      "source_line": 9
+    },
+    {
+      "kind": "scalar_alu",
+      "category": "scalar",
+      "execution_class": "scalar_alu",
+      "source_line": 10
+    },
+    {
+      "kind": "scalar_alu",
+      "category": "scalar",
+      "execution_class": "scalar_alu",
+      "source_line": 11
+    },
+    {
+      "kind": "address_generation",
+      "category": "memory",
+      "execution_class": "address_generation",
+      "source_line": 15
+    },
+    {
+      "kind": "vector_load",
+      "category": "vector_memory",
+      "execution_class": "load_data",
+      "source_line": 15
+    },
+    {
+      "kind": "address_generation",
+      "category": "memory",
+      "execution_class": "address_generation",
+      "source_line": 16
+    },
+    {
+      "kind": "vector_load",
+      "category": "vector_memory",
+      "execution_class": "load_data",
+      "source_line": 16
+    },
+    {
+      "kind": "vector_fp_fma",
+      "category": "vector_compute",
+      "execution_class": "vector_fp",
+      "source_line": 16
+    },
+    {
+      "kind": "address_generation",
+      "category": "memory",
+      "execution_class": "address_generation",
+      "source_line": 17
+    },
+    {
+      "kind": "vector_store",
+      "category": "vector_memory",
+      "execution_class": "store_data",
+      "source_line": 17
+    },
+    {
+      "kind": "scalar_alu",
+      "category": "scalar",
+      "execution_class": "scalar_alu",
+      "source_line": 18
+    },
+    {
+      "kind": "scalar_alu",
+      "category": "scalar",
+      "execution_class": "scalar_alu",
+      "source_line": 19
+    },
+    {
+      "kind": "branch",
+      "category": "control",
+      "execution_class": "branch",
+      "source_line": 20
+    },
+    {
+      "kind": "vector_config",
+      "category": "vector_control",
+      "execution_class": "vector_config",
+      "source_line": 21
+    },
+    {
+      "kind": "return",
+      "category": "control",
+      "execution_class": "branch",
+      "source_line": 23
+    }
+  ],
+  "vector_state_final": null,
+  "statistics": {
+    "instruction_count": 13,
+    "uop_count": 19,
+    "instructions_by_mnemonic": {
+      "addq": 1,
+      "cmpq": 1,
+      "jb": 1,
+      "je": 1,
+      "leaq": 1,
+      "ret": 1,
+      "testq": 1,
+      "vbroadcastss": 1,
+      "vfmadd213ps": 1,
+      "vmovups": 2,
+      "vzeroupper": 1,
+      "xorl": 1
+    },
+    "uops_by_kind": {
+      "address_generation": 4,
+      "branch": 2,
+      "return": 1,
+      "scalar_alu": 5,
+      "vector_broadcast": 1,
+      "vector_config": 1,
+      "vector_fp_fma": 1,
+      "vector_load": 3,
+      "vector_store": 1
+    }
+  }
+}

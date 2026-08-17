@@ -81,6 +81,35 @@ class EngineTest(unittest.TestCase):
             parts[1].issue_tick - parts[0].issue_tick, result.ticks_per_cycle
         )
 
+    def test_bound_trace_is_reusable_across_execution_models(self) -> None:
+        for kernel in ("fma_throughput", "fma_latency", "mixed_compute"):
+            with self.subTest(kernel=kernel):
+                dynamic = build_dynamic_trace(
+                    ROOT / f"kernel/{kernel}/artifacts/x86/{kernel}_avx512.s",
+                    f"{kernel}_avx512_f32",
+                    ROOT / "recipes/x86.yaml",
+                    256,
+                )
+                bound = self.profile.bind(dynamic)
+
+                out_of_order = simulate(bound, self.profile, "out_of_order")
+                out_of_order_issue_ticks = [
+                    uop.issue_tick for uop in out_of_order.trace.uops
+                ]
+                in_order = simulate(bound, self.profile, "in_order")
+
+                self.assertTrue(
+                    all(macro.retire_tick is not None for macro in in_order.trace.macros)
+                )
+                self.assertEqual(
+                    out_of_order_issue_ticks,
+                    [uop.issue_tick for uop in out_of_order.trace.uops],
+                )
+                self.assertTrue(
+                    all(uop.issue_tick is None for uop in bound.uops),
+                    "simulate() must not write timing state into its input trace",
+                )
+
 
 if __name__ == "__main__":
     unittest.main()

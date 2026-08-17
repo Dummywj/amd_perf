@@ -1,0 +1,406 @@
+{
+  "trace_version": 1,
+  "isa": "rvv",
+  "assembly": "kernel/vector_copy/artifacts/rvv/vector_copy_rvv.s",
+  "function": "vector_copy_rvv_f32",
+  "input_mode": "assembly_only",
+  "provenance": {
+    "assembly_sha256": "2217607918825e0a6a988cfdaf37dcc0e54132dd6e62873cc3eafd12622709d3",
+    "recipe_sha256": "9218417f8df1740dad3c5033f23e5e8be64165a064f305d498daba5d8d3becdf",
+    "uop_catalog_sha256": "dbfa44215a3d751980ca9a5456e1d2d0526ee8e1959b2b0ccc8ef7f6e8079c42"
+  },
+  "instructions": [
+    {
+      "index": 0,
+      "source_line": 11,
+      "mnemonic": "beq",
+      "form": "any",
+      "operands": [
+        "a2",
+        "zero",
+        ".L1"
+      ],
+      "width_bits": "runtime",
+      "uops": [
+        {
+          "kind": "branch",
+          "category": "control",
+          "execution_class": "branch",
+          "source_line": 11
+        }
+      ]
+    },
+    {
+      "index": 1,
+      "source_line": 12,
+      "mnemonic": "li",
+      "form": "any",
+      "operands": [
+        "a3",
+        "0"
+      ],
+      "width_bits": "runtime",
+      "uops": [
+        {
+          "kind": "scalar_move",
+          "category": "scalar",
+          "execution_class": "scalar_alu",
+          "source_line": 12
+        }
+      ]
+    },
+    {
+      "index": 2,
+      "source_line": 14,
+      "mnemonic": "slli",
+      "form": "any",
+      "operands": [
+        "a5",
+        "a3",
+        "2"
+      ],
+      "width_bits": "runtime",
+      "uops": [
+        {
+          "kind": "scalar_alu",
+          "category": "scalar",
+          "execution_class": "scalar_alu",
+          "source_line": 14
+        }
+      ]
+    },
+    {
+      "index": 3,
+      "source_line": 15,
+      "mnemonic": "sub",
+      "form": "any",
+      "operands": [
+        "a4",
+        "a2",
+        "a3"
+      ],
+      "width_bits": "runtime",
+      "uops": [
+        {
+          "kind": "scalar_alu",
+          "category": "scalar",
+          "execution_class": "scalar_alu",
+          "source_line": 15
+        }
+      ]
+    },
+    {
+      "index": 4,
+      "source_line": 16,
+      "mnemonic": "add",
+      "form": "any",
+      "operands": [
+        "a6",
+        "a0",
+        "a5"
+      ],
+      "width_bits": "runtime",
+      "uops": [
+        {
+          "kind": "scalar_alu",
+          "category": "scalar",
+          "execution_class": "scalar_alu",
+          "source_line": 16
+        }
+      ]
+    },
+    {
+      "index": 5,
+      "source_line": 17,
+      "mnemonic": "add",
+      "form": "any",
+      "operands": [
+        "a5",
+        "a1",
+        "a5"
+      ],
+      "width_bits": "runtime",
+      "uops": [
+        {
+          "kind": "scalar_alu",
+          "category": "scalar",
+          "execution_class": "scalar_alu",
+          "source_line": 17
+        }
+      ]
+    },
+    {
+      "index": 6,
+      "source_line": 18,
+      "mnemonic": "vsetvli",
+      "form": "any",
+      "operands": [
+        "a4",
+        "a4",
+        "e32",
+        "m1",
+        "ta",
+        "ma"
+      ],
+      "width_bits": "runtime",
+      "uops": [
+        {
+          "kind": "vector_config",
+          "category": "vector_control",
+          "execution_class": "vector_config",
+          "source_line": 18
+        }
+      ],
+      "vector_state": {
+        "sew_bits": 32,
+        "lmul": "m1",
+        "vl": "runtime",
+        "vl_operand": "a4",
+        "tail_policy": "ta",
+        "mask_policy": "ma"
+      }
+    },
+    {
+      "index": 7,
+      "source_line": 19,
+      "mnemonic": "vle32.v",
+      "form": "any",
+      "operands": [
+        "v24",
+        "0(a6)"
+      ],
+      "width_bits": "runtime",
+      "uops": [
+        {
+          "kind": "address_generation",
+          "category": "memory",
+          "execution_class": "address_generation",
+          "source_line": 19
+        },
+        {
+          "kind": "vector_load",
+          "category": "vector_memory",
+          "execution_class": "load_data",
+          "source_line": 19
+        }
+      ],
+      "vector_state": {
+        "sew_bits": 32,
+        "lmul": "m1",
+        "vl": "runtime",
+        "vl_operand": "a4",
+        "tail_policy": "ta",
+        "mask_policy": "ma"
+      }
+    },
+    {
+      "index": 8,
+      "source_line": 20,
+      "mnemonic": "add",
+      "form": "any",
+      "operands": [
+        "a3",
+        "a3",
+        "a4"
+      ],
+      "width_bits": "runtime",
+      "uops": [
+        {
+          "kind": "scalar_alu",
+          "category": "scalar",
+          "execution_class": "scalar_alu",
+          "source_line": 20
+        }
+      ]
+    },
+    {
+      "index": 9,
+      "source_line": 21,
+      "mnemonic": "vse32.v",
+      "form": "any",
+      "operands": [
+        "v24",
+        "0(a5)"
+      ],
+      "width_bits": "runtime",
+      "uops": [
+        {
+          "kind": "address_generation",
+          "category": "memory",
+          "execution_class": "address_generation",
+          "source_line": 21
+        },
+        {
+          "kind": "vector_store",
+          "category": "vector_memory",
+          "execution_class": "store_data",
+          "source_line": 21
+        }
+      ],
+      "vector_state": {
+        "sew_bits": 32,
+        "lmul": "m1",
+        "vl": "runtime",
+        "vl_operand": "a4",
+        "tail_policy": "ta",
+        "mask_policy": "ma"
+      }
+    },
+    {
+      "index": 10,
+      "source_line": 22,
+      "mnemonic": "bgtu",
+      "form": "any",
+      "operands": [
+        "a2",
+        "a3",
+        ".L3"
+      ],
+      "width_bits": "runtime",
+      "uops": [
+        {
+          "kind": "branch",
+          "category": "control",
+          "execution_class": "branch",
+          "source_line": 22
+        }
+      ]
+    },
+    {
+      "index": 11,
+      "source_line": 24,
+      "mnemonic": "ret",
+      "form": "any",
+      "operands": [],
+      "width_bits": "runtime",
+      "uops": [
+        {
+          "kind": "return",
+          "category": "control",
+          "execution_class": "branch",
+          "source_line": 24
+        }
+      ]
+    }
+  ],
+  "uops": [
+    {
+      "kind": "branch",
+      "category": "control",
+      "execution_class": "branch",
+      "source_line": 11
+    },
+    {
+      "kind": "scalar_move",
+      "category": "scalar",
+      "execution_class": "scalar_alu",
+      "source_line": 12
+    },
+    {
+      "kind": "scalar_alu",
+      "category": "scalar",
+      "execution_class": "scalar_alu",
+      "source_line": 14
+    },
+    {
+      "kind": "scalar_alu",
+      "category": "scalar",
+      "execution_class": "scalar_alu",
+      "source_line": 15
+    },
+    {
+      "kind": "scalar_alu",
+      "category": "scalar",
+      "execution_class": "scalar_alu",
+      "source_line": 16
+    },
+    {
+      "kind": "scalar_alu",
+      "category": "scalar",
+      "execution_class": "scalar_alu",
+      "source_line": 17
+    },
+    {
+      "kind": "vector_config",
+      "category": "vector_control",
+      "execution_class": "vector_config",
+      "source_line": 18
+    },
+    {
+      "kind": "address_generation",
+      "category": "memory",
+      "execution_class": "address_generation",
+      "source_line": 19
+    },
+    {
+      "kind": "vector_load",
+      "category": "vector_memory",
+      "execution_class": "load_data",
+      "source_line": 19
+    },
+    {
+      "kind": "scalar_alu",
+      "category": "scalar",
+      "execution_class": "scalar_alu",
+      "source_line": 20
+    },
+    {
+      "kind": "address_generation",
+      "category": "memory",
+      "execution_class": "address_generation",
+      "source_line": 21
+    },
+    {
+      "kind": "vector_store",
+      "category": "vector_memory",
+      "execution_class": "store_data",
+      "source_line": 21
+    },
+    {
+      "kind": "branch",
+      "category": "control",
+      "execution_class": "branch",
+      "source_line": 22
+    },
+    {
+      "kind": "return",
+      "category": "control",
+      "execution_class": "branch",
+      "source_line": 24
+    }
+  ],
+  "vector_state_final": {
+    "sew_bits": 32,
+    "lmul": "m1",
+    "vl": "runtime",
+    "vl_operand": "a4",
+    "tail_policy": "ta",
+    "mask_policy": "ma"
+  },
+  "statistics": {
+    "instruction_count": 12,
+    "uop_count": 14,
+    "instructions_by_mnemonic": {
+      "add": 3,
+      "beq": 1,
+      "bgtu": 1,
+      "li": 1,
+      "ret": 1,
+      "slli": 1,
+      "sub": 1,
+      "vle32.v": 1,
+      "vse32.v": 1,
+      "vsetvli": 1
+    },
+    "uops_by_kind": {
+      "address_generation": 2,
+      "branch": 2,
+      "return": 1,
+      "scalar_alu": 5,
+      "scalar_move": 1,
+      "vector_config": 1,
+      "vector_load": 1,
+      "vector_store": 1
+    }
+  }
+}

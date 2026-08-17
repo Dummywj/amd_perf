@@ -1,0 +1,16 @@
+format_version: 1
+workload_id: vector-triad-avx512-validation
+isa: x86
+function: vector_triad_avx512_f32
+assembly: ../artifacts/x86/vector_triad_avx512.s
+recipe: ../../../recipes/x86.yaml
+uop_kinds: ../../../uops/uop_kinds.yaml
+profile: ../../../profiles/amd_zen4.yaml
+schema: ../../../schemas/profile.schema.json
+input_vectors: 2
+output_count: count
+execution_models: [out_of_order, in_order]
+points:
+  - {count: 256, cache_mode: hot-l1, validation_class: steady-l1}
+  - {count: 1024, cache_mode: hot-l1, validation_class: steady-l1}
+  - {count: 4096, cache_mode: hot-capacity, validation_class: capacity-resident}

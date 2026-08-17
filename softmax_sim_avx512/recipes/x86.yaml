@@ -1,6 +1,6 @@
 version: 1
 isa: x86
-description: Canonical x86 instruction forms emitted by the AVX-512 softmax kernel.
+description: Canonical x86 instruction forms emitted by the AVX-512 kernel suite.
 instructions:
   - mnemonic: testq
     form: any
@@ -14,6 +14,15 @@ instructions:
   - mnemonic: jb
     form: any
     uops: [branch]
+  - mnemonic: jbe
+    form: any
+    uops: [branch]
+  - mnemonic: jnb
+    form: any
+    uops: [branch]
+  - mnemonic: jmp
+    form: any
+    uops: [branch]
   - mnemonic: ret
     form: any
     uops: [return]
@@ -23,10 +32,22 @@ instructions:
   - mnemonic: movl
     form: any
     uops: [scalar_move]
+  - mnemonic: movq
+    form: any
+    uops: [scalar_move]
   - mnemonic: addq
     form: any
     uops: [scalar_alu]
   - mnemonic: andq
+    form: any
+    uops: [scalar_alu]
+  - mnemonic: subq
+    form: any
+    uops: [scalar_alu]
+  - mnemonic: salq
+    form: any
+    uops: [scalar_alu]
+  - mnemonic: shrq
     form: any
     uops: [scalar_alu]
   - mnemonic: cmpq
@@ -44,6 +65,9 @@ instructions:
   - mnemonic: vmovups
     form: memory_store
     uops: [address_generation, vector_store]
+  - mnemonic: vmovdqu64
+    form: memory_store
+    uops: [address_generation, vector_store]
   - mnemonic: vmovaps
     form: register
     uops: [vector_move]
@@ -53,12 +77,18 @@ instructions:
   - mnemonic: vmovss
     form: memory_store
     uops: [address_generation, scalar_store]
+  - mnemonic: vmovlps
+    form: memory_store
+    uops: [address_generation, vector_store]
   - mnemonic: vbroadcastss
     form: memory_load
     uops: [address_generation, vector_load, vector_broadcast]
   - mnemonic: vbroadcastss
     form: register
     uops: [vector_broadcast]
+  - mnemonic: vbroadcastsd
+    form: memory_load
+    uops: [address_generation, vector_load, vector_broadcast]
   - mnemonic: vpbroadcastd
     form: register
     uops: [vector_broadcast]
@@ -81,6 +111,9 @@ instructions:
     form: register
     uops: [vector_fp_mul]
   - mnemonic: vaddps
+    form: memory_load
+    uops: [address_generation, vector_load, vector_fp_add]
+  - mnemonic: vaddps
     form: register
     uops: [vector_fp_add]
   - mnemonic: vaddss
@@ -90,17 +123,38 @@ instructions:
     form: register
     uops: [scalar_fp_div]
   - mnemonic: vfmadd132ps
+    form: memory_load
+    uops: [address_generation, vector_load, vector_fp_fma]
+  - mnemonic: vfmadd132ps
+    form: register
+    uops: [vector_fp_fma]
+  - mnemonic: vfmadd213ps
+    form: memory_load
+    uops: [address_generation, vector_load, vector_fp_fma]
+  - mnemonic: vfmadd213ps
+    form: register
+    uops: [vector_fp_fma]
+  - mnemonic: vfmadd231ps
+    form: memory_load
+    uops: [address_generation, vector_load, vector_fp_fma]
+  - mnemonic: vfmadd231ps
     form: register
     uops: [vector_fp_fma]
   - mnemonic: vfnmadd132ps
     form: register
     uops: [vector_fp_fma]
   - mnemonic: vcvttps2dq
+    form: memory_load
+    uops: [address_generation, vector_load, vector_convert]
+  - mnemonic: vcvttps2dq
     form: register
     uops: [vector_convert]
   - mnemonic: vcvtdq2ps
     form: register
     uops: [vector_convert]
+  - mnemonic: vpaddd
+    form: memory_load
+    uops: [address_generation, vector_load, vector_integer]
   - mnemonic: vpaddd
     form: register
     uops: [vector_integer]
@@ -109,7 +163,10 @@ instructions:
     uops: [vector_shift]
   - mnemonic: vxorps
     form: register
-    uops: [vector_fp_add]
+    uops: [vector_move]
+  - mnemonic: vxorpd
+    form: register
+    uops: [vector_move]
   - mnemonic: vextractf64x4
     form: register
     uops: [vector_shuffle]
@@ -120,5 +177,8 @@ instructions:
     form: register
     uops: [vector_shuffle]
   - mnemonic: vshufps
+    form: register
+    uops: [vector_shuffle]
+  - mnemonic: vunpcklps
     form: register
     uops: [vector_shuffle]

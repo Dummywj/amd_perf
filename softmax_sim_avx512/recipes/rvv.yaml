@@ -1,6 +1,6 @@
 version: 1
 isa: rvv
-description: Canonical RVV instruction forms emitted by the RVV softmax kernel.
+description: Canonical RVV instruction forms emitted by the RVV kernel suite.
 instructions:
   - mnemonic: beq
     form: any
@@ -8,10 +8,25 @@ instructions:
   - mnemonic: bgtu
     form: any
     uops: [branch]
+  - mnemonic: bgeu
+    form: any
+    uops: [branch]
+  - mnemonic: bltu
+    form: any
+    uops: [branch]
+  - mnemonic: j
+    form: any
+    uops: [branch]
   - mnemonic: ret
     form: any
     uops: [return]
+  - mnemonic: jr
+    form: any
+    uops: [return]
   - mnemonic: add
+    form: any
+    uops: [scalar_alu]
+  - mnemonic: addi
     form: any
     uops: [scalar_alu]
   - mnemonic: sub
@@ -20,6 +35,12 @@ instructions:
   - mnemonic: slli
     form: any
     uops: [scalar_alu]
+  - mnemonic: ld
+    form: any
+    uops: [scalar_load]
+  - mnemonic: sd
+    form: any
+    uops: [scalar_store]
   - mnemonic: li
     form: any
     uops: [scalar_move]
@@ -29,6 +50,9 @@ instructions:
   - mnemonic: flw
     form: any
     uops: [scalar_load]
+  - mnemonic: fsw
+    form: any
+    uops: [scalar_store]
   - mnemonic: fadd.s
     form: any
     uops: [scalar_fp_add]
@@ -80,7 +104,13 @@ instructions:
   - mnemonic: vfmul.vv
     form: any
     uops: [vector_fp_mul]
+  - mnemonic: vfadd.vv
+    form: any
+    uops: [vector_fp_add]
   - mnemonic: vfmacc.vv
+    form: any
+    uops: [vector_fp_fma]
+  - mnemonic: vfmacc.vf
     form: any
     uops: [vector_fp_fma]
   - mnemonic: vfcvt.rtz.x.f.v
@@ -93,6 +123,9 @@ instructions:
     form: any
     uops: [vector_integer]
   - mnemonic: vsll.vi
+    form: any
+    uops: [vector_shift]
+  - mnemonic: vsll.vx
     form: any
     uops: [vector_shift]
   - mnemonic: vfredmax.vs

@@ -1,0 +1,1344 @@
+{
+  "trace_version": 1,
+  "isa": "x86",
+  "assembly": "kernel/dot_product/artifacts/x86/dot_product_avx512.s",
+  "function": "dot_product_avx512_f32",
+  "input_mode": "assembly_only",
+  "provenance": {
+    "assembly_sha256": "449148df71853dda43f044a8cff164c7f571f75f399b8e1fe3f4c892f6652191",
+    "recipe_sha256": "75f021308eb45f536707b6678996fc4f701102a1fd1a909a08d7da036cc4ead9",
+    "uop_catalog_sha256": "dbfa44215a3d751980ca9a5456e1d2d0526ee8e1959b2b0ccc8ef7f6e8079c42"
+  },
+  "instructions": [
+    {
+      "index": 0,
+      "source_line": 7,
+      "mnemonic": "testq",
+      "form": "register",
+      "operands": [
+        "%rdx",
+        "%rdx"
+      ],
+      "width_bits": 32,
+      "uops": [
+        {
+          "kind": "scalar_alu",
+          "category": "scalar",
+          "execution_class": "scalar_alu",
+          "source_line": 7
+        }
+      ]
+    },
+    {
+      "index": 1,
+      "source_line": 8,
+      "mnemonic": "je",
+      "form": "register",
+      "operands": [
+        ".L4"
+      ],
+      "width_bits": 32,
+      "uops": [
+        {
+          "kind": "branch",
+          "category": "control",
+          "execution_class": "branch",
+          "source_line": 8
+        }
+      ]
+    },
+    {
+      "index": 2,
+      "source_line": 9,
+      "mnemonic": "leaq",
+      "form": "memory_load",
+      "operands": [
+        "(%rdi,%rdx,4)",
+        "%rcx"
+      ],
+      "width_bits": 32,
+      "uops": [
+        {
+          "kind": "scalar_alu",
+          "category": "scalar",
+          "execution_class": "scalar_alu",
+          "source_line": 9
+        }
+      ]
+    },
+    {
+      "index": 3,
+      "source_line": 10,
+      "mnemonic": "xorl",
+      "form": "register",
+      "operands": [
+        "%eax",
+        "%eax"
+      ],
+      "width_bits": 32,
+      "uops": [
+        {
+          "kind": "scalar_alu",
+          "category": "scalar",
+          "execution_class": "scalar_alu",
+          "source_line": 10
+        }
+      ]
+    },
+    {
+      "index": 4,
+      "source_line": 11,
+      "mnemonic": "vxorps",
+      "form": "register",
+      "operands": [
+        "%xmm0",
+        "%xmm0",
+        "%xmm0"
+      ],
+      "width_bits": 128,
+      "uops": [
+        {
+          "kind": "vector_move",
+          "category": "vector_move",
+          "execution_class": "vector_fp",
+          "source_line": 11
+        }
+      ],
+      "profile_opcode_recipe": {
+        "key": "vxorps:xmm,xmm,xmm",
+        "recipe": {
+          "required_features": [
+            "avx512f"
+          ],
+          "decoded_macro_ops": 1,
+          "retire_macro_ops": 1,
+          "uops": [
+            {
+              "id": "move",
+              "kind": "vector_fp",
+              "latency_cycles": 0,
+              "issue_interval_cycles": 0.5,
+              "resource_choices": [
+                "vector-fp"
+              ],
+              "resource_occupancy_cycles": 1
+            }
+          ],
+          "evidence": [
+            "llvm-znver4-scheduling-model"
+          ],
+          "notes": "LLVM models these eliminated register moves as zero latency."
+        }
+      }
+    },
+    {
+      "index": 5,
+      "source_line": 15,
+      "mnemonic": "vmovups",
+      "form": "memory_load",
+      "operands": [
+        "(%rdi,%rax,4)",
+        "%zmm2"
+      ],
+      "width_bits": 512,
+      "uops": [
+        {
+          "kind": "address_generation",
+          "category": "memory",
+          "execution_class": "address_generation",
+          "source_line": 15
+        },
+        {
+          "kind": "vector_load",
+          "category": "vector_memory",
+          "execution_class": "load_data",
+          "source_line": 15
+        }
+      ],
+      "profile_opcode_recipe": {
+        "key": "vmovups:memory,zmm",
+        "recipe": {
+          "required_features": [
+            "avx512f"
+          ],
+          "decoded_macro_ops": 1,
+          "retire_macro_ops": 1,
+          "uops": [
+            {
+              "id": "agu",
+              "kind": "address_generation",
+              "latency_cycles": 0,
+              "issue_interval_cycles": 1,
+              "resource_choices": [
+                "address-generation"
+              ],
+              "resource_occupancy_cycles": 1
+            },
+            {
+              "id": "load",
+              "kind": "load_data",
+              "latency_cycles": 4,
+              "issue_interval_cycles": 0.5,
+              "resource_choices": [
+                "load-data"
+              ],
+              "resource_occupancy_cycles": 1,
+              "depends_on": [
+                "agu"
+              ]
+            }
+          ],
+          "evidence": [
+            "local-profile-benchmark",
+            "llvm-znver4-scheduling-model"
+          ]
+        }
+      }
+    },
+    {
+      "index": 6,
+      "source_line": 16,
+      "mnemonic": "vfmadd231ps",
+      "form": "memory_load",
+      "operands": [
+        "(%rcx,%rax,4)",
+        "%zmm2",
+        "%zmm0"
+      ],
+      "width_bits": 512,
+      "uops": [
+        {
+          "kind": "address_generation",
+          "category": "memory",
+          "execution_class": "address_generation",
+          "source_line": 16
+        },
+        {
+          "kind": "vector_load",
+          "category": "vector_memory",
+          "execution_class": "load_data",
+          "source_line": 16
+        },
+        {
+          "kind": "vector_fp_fma",
+          "category": "vector_compute",
+          "execution_class": "vector_fp",
+          "source_line": 16
+        }
+      ],
+      "profile_opcode_recipe": {
+        "key": "vfmadd231ps:memory,zmm,zmm",
+        "recipe": {
+          "required_features": [
+            "avx512f",
+            "fma"
+          ],
+          "decoded_macro_ops": 1,
+          "retire_macro_ops": 1,
+          "vector_decomposition": {
+            "parts": 2,
+            "part_width_bits": 256,
+            "part_issue_gap_cycles": 1
+          },
+          "uops": [
+            {
+              "id": "agu",
+              "kind": "address_generation",
+              "latency_cycles": 0,
+              "issue_interval_cycles": 1,
+              "resource_choices": [
+                "address-generation"
+              ],
+              "resource_occupancy_cycles": 1
+            },
+            {
+              "id": "load",
+              "kind": "load_data",
+              "latency_cycles": 4,
+              "issue_interval_cycles": 0.5,
+              "resource_choices": [
+                "load-data"
+              ],
+              "resource_occupancy_cycles": 1,
+              "depends_on": [
+                "agu"
+              ]
+            },
+            {
+              "id": "fma-part-0",
+              "kind": "vector_fp",
+              "latency_cycles": 4,
+              "issue_interval_cycles": 0.5,
+              "resource_choices": [
+                "vector-fp"
+              ],
+              "resource_occupancy_cycles": 1,
+              "issue_domains": [
+                "fp-add-fma-convert"
+              ],
+              "depends_on": [
+                "load"
+              ],
+              "part_index": 0
+            },
+            {
+              "id": "fma-part-1",
+              "kind": "vector_fp",
+              "latency_cycles": 4,
+              "issue_interval_cycles": 0.5,
+              "resource_choices": [
+                "vector-fp"
+              ],
+              "resource_occupancy_cycles": 1,
+              "issue_domains": [
+                "fp-add-fma-convert"
+              ],
+              "depends_on": [
+                "load"
+              ],
+              "part_index": 1
+            }
+          ],
+          "evidence": [
+            "provisional-equivalent-decomposition",
+            "llvm-znver4-scheduling-model"
+          ],
+          "notes": "Provisional memory-source decomposition derived from the existing load and register FMA models; this exact form was not locally calibrated."
+        }
+      }
+    },
+    {
+      "index": 7,
+      "source_line": 17,
+      "mnemonic": "addq",
+      "form": "register",
+      "operands": [
+        "$16",
+        "%rax"
+      ],
+      "width_bits": 32,
+      "uops": [
+        {
+          "kind": "scalar_alu",
+          "category": "scalar",
+          "execution_class": "scalar_alu",
+          "source_line": 17
+        }
+      ]
+    },
+    {
+      "index": 8,
+      "source_line": 18,
+      "mnemonic": "cmpq",
+      "form": "register",
+      "operands": [
+        "%rdx",
+        "%rax"
+      ],
+      "width_bits": 32,
+      "uops": [
+        {
+          "kind": "scalar_alu",
+          "category": "scalar",
+          "execution_class": "scalar_alu",
+          "source_line": 18
+        }
+      ]
+    },
+    {
+      "index": 9,
+      "source_line": 19,
+      "mnemonic": "jb",
+      "form": "register",
+      "operands": [
+        ".L3"
+      ],
+      "width_bits": 32,
+      "uops": [
+        {
+          "kind": "branch",
+          "category": "control",
+          "execution_class": "branch",
+          "source_line": 19
+        }
+      ]
+    },
+    {
+      "index": 10,
+      "source_line": 21,
+      "mnemonic": "vextractf64x4",
+      "form": "register",
+      "operands": [
+        "$0x1",
+        "%zmm0",
+        "%ymm1"
+      ],
+      "width_bits": 512,
+      "uops": [
+        {
+          "kind": "vector_shuffle",
+          "category": "vector_permutation",
+          "execution_class": "shuffle",
+          "source_line": 21
+        }
+      ],
+      "profile_opcode_recipe": {
+        "key": "vextractf64x4:immediate,zmm,ymm",
+        "recipe": {
+          "required_features": [
+            "avx512dq"
+          ],
+          "decoded_macro_ops": 1,
+          "retire_macro_ops": 1,
+          "uops": [
+            {
+              "id": "shuffle",
+              "kind": "shuffle",
+              "latency_cycles": 2,
+              "issue_interval_cycles": 1,
+              "resource_choices": [
+                "shuffle"
+              ],
+              "resource_occupancy_cycles": 1
+            }
+          ],
+          "evidence": [
+            "llvm-znver4-scheduling-model"
+          ]
+        }
+      }
+    },
+    {
+      "index": 11,
+      "source_line": 22,
+      "mnemonic": "vaddps",
+      "form": "register",
+      "operands": [
+        "%ymm0",
+        "%ymm1",
+        "%ymm0"
+      ],
+      "width_bits": 256,
+      "uops": [
+        {
+          "kind": "vector_fp_add",
+          "category": "vector_compute",
+          "execution_class": "vector_fp",
+          "source_line": 22
+        }
+      ],
+      "profile_opcode_recipe": {
+        "key": "vaddps:ymm,ymm,ymm",
+        "recipe": {
+          "required_features": [
+            "avx"
+          ],
+          "decoded_macro_ops": 1,
+          "retire_macro_ops": 1,
+          "uops": [
+            {
+              "id": "add",
+              "kind": "vector_fp",
+              "latency_cycles": 3,
+              "issue_interval_cycles": 0.5,
+              "resource_choices": [
+                "vector-fp"
+              ],
+              "resource_occupancy_cycles": 1,
+              "issue_domains": [
+                "fp-add-fma-convert"
+              ]
+            }
+          ],
+          "evidence": [
+            "local-profile-benchmark"
+          ]
+        }
+      }
+    },
+    {
+      "index": 12,
+      "source_line": 23,
+      "mnemonic": "vextractf128",
+      "form": "register",
+      "operands": [
+        "$0x1",
+        "%ymm0",
+        "%xmm1"
+      ],
+      "width_bits": 256,
+      "uops": [
+        {
+          "kind": "vector_shuffle",
+          "category": "vector_permutation",
+          "execution_class": "shuffle",
+          "source_line": 23
+        }
+      ],
+      "profile_opcode_recipe": {
+        "key": "vextractf128:immediate,ymm,xmm",
+        "recipe": {
+          "required_features": [
+            "avx"
+          ],
+          "decoded_macro_ops": 1,
+          "retire_macro_ops": 1,
+          "uops": [
+            {
+              "id": "shuffle",
+              "kind": "shuffle",
+              "latency_cycles": 4,
+              "issue_interval_cycles": 1,
+              "resource_choices": [
+                "shuffle"
+              ],
+              "resource_occupancy_cycles": 1
+            }
+          ],
+          "evidence": [
+            "llvm-znver4-scheduling-model"
+          ]
+        }
+      }
+    },
+    {
+      "index": 13,
+      "source_line": 24,
+      "mnemonic": "vaddps",
+      "form": "register",
+      "operands": [
+        "%xmm0",
+        "%xmm1",
+        "%xmm1"
+      ],
+      "width_bits": 128,
+      "uops": [
+        {
+          "kind": "vector_fp_add",
+          "category": "vector_compute",
+          "execution_class": "vector_fp",
+          "source_line": 24
+        }
+      ],
+      "profile_opcode_recipe": {
+        "key": "vaddps:xmm,xmm,xmm",
+        "recipe": {
+          "required_features": [
+            "avx"
+          ],
+          "decoded_macro_ops": 1,
+          "retire_macro_ops": 1,
+          "uops": [
+            {
+              "id": "add",
+              "kind": "vector_fp",
+              "latency_cycles": 3,
+              "issue_interval_cycles": 0.5,
+              "resource_choices": [
+                "vector-fp"
+              ],
+              "resource_occupancy_cycles": 1,
+              "issue_domains": [
+                "fp-add-fma-convert"
+              ]
+            }
+          ],
+          "evidence": [
+            "local-profile-benchmark"
+          ]
+        }
+      }
+    },
+    {
+      "index": 14,
+      "source_line": 25,
+      "mnemonic": "vpermilps",
+      "form": "register",
+      "operands": [
+        "$78",
+        "%xmm1",
+        "%xmm0"
+      ],
+      "width_bits": 128,
+      "uops": [
+        {
+          "kind": "vector_shuffle",
+          "category": "vector_permutation",
+          "execution_class": "shuffle",
+          "source_line": 25
+        }
+      ],
+      "profile_opcode_recipe": {
+        "key": "vpermilps:immediate,xmm,xmm",
+        "recipe": {
+          "required_features": [
+            "avx"
+          ],
+          "decoded_macro_ops": 1,
+          "retire_macro_ops": 1,
+          "uops": [
+            {
+              "id": "shuffle",
+              "kind": "shuffle",
+              "latency_cycles": 1,
+              "issue_interval_cycles": 0.5,
+              "resource_choices": [
+                "shuffle"
+              ],
+              "resource_occupancy_cycles": 1
+            }
+          ],
+          "evidence": [
+            "llvm-znver4-scheduling-model"
+          ]
+        }
+      }
+    },
+    {
+      "index": 15,
+      "source_line": 26,
+      "mnemonic": "vaddps",
+      "form": "register",
+      "operands": [
+        "%xmm1",
+        "%xmm0",
+        "%xmm0"
+      ],
+      "width_bits": 128,
+      "uops": [
+        {
+          "kind": "vector_fp_add",
+          "category": "vector_compute",
+          "execution_class": "vector_fp",
+          "source_line": 26
+        }
+      ],
+      "profile_opcode_recipe": {
+        "key": "vaddps:xmm,xmm,xmm",
+        "recipe": {
+          "required_features": [
+            "avx"
+          ],
+          "decoded_macro_ops": 1,
+          "retire_macro_ops": 1,
+          "uops": [
+            {
+              "id": "add",
+              "kind": "vector_fp",
+              "latency_cycles": 3,
+              "issue_interval_cycles": 0.5,
+              "resource_choices": [
+                "vector-fp"
+              ],
+              "resource_occupancy_cycles": 1,
+              "issue_domains": [
+                "fp-add-fma-convert"
+              ]
+            }
+          ],
+          "evidence": [
+            "local-profile-benchmark"
+          ]
+        }
+      }
+    },
+    {
+      "index": 16,
+      "source_line": 27,
+      "mnemonic": "vmovaps",
+      "form": "register",
+      "operands": [
+        "%xmm0",
+        "%xmm1"
+      ],
+      "width_bits": 128,
+      "uops": [
+        {
+          "kind": "vector_move",
+          "category": "vector_move",
+          "execution_class": "vector_fp",
+          "source_line": 27
+        }
+      ],
+      "profile_opcode_recipe": {
+        "key": "vmovaps:xmm,xmm",
+        "recipe": {
+          "required_features": [
+            "avx512f"
+          ],
+          "decoded_macro_ops": 1,
+          "retire_macro_ops": 1,
+          "uops": [
+            {
+              "id": "move",
+              "kind": "vector_fp",
+              "latency_cycles": 0,
+              "issue_interval_cycles": 0.5,
+              "resource_choices": [
+                "vector-fp"
+              ],
+              "resource_occupancy_cycles": 1
+            }
+          ],
+          "evidence": [
+            "llvm-znver4-scheduling-model"
+          ],
+          "notes": "LLVM models these eliminated register moves as zero latency."
+        }
+      }
+    },
+    {
+      "index": 17,
+      "source_line": 28,
+      "mnemonic": "vshufps",
+      "form": "register",
+      "operands": [
+        "$85",
+        "%xmm0",
+        "%xmm0",
+        "%xmm0"
+      ],
+      "width_bits": 128,
+      "uops": [
+        {
+          "kind": "vector_shuffle",
+          "category": "vector_permutation",
+          "execution_class": "shuffle",
+          "source_line": 28
+        }
+      ],
+      "profile_opcode_recipe": {
+        "key": "vshufps:immediate,xmm,xmm,xmm",
+        "recipe": {
+          "required_features": [
+            "avx"
+          ],
+          "decoded_macro_ops": 1,
+          "retire_macro_ops": 1,
+          "uops": [
+            {
+              "id": "shuffle",
+              "kind": "shuffle",
+              "latency_cycles": 1,
+              "issue_interval_cycles": 0.5,
+              "resource_choices": [
+                "shuffle"
+              ],
+              "resource_occupancy_cycles": 1
+            }
+          ],
+          "evidence": [
+            "llvm-znver4-scheduling-model"
+          ]
+        }
+      }
+    },
+    {
+      "index": 18,
+      "source_line": 29,
+      "mnemonic": "vaddss",
+      "form": "register",
+      "operands": [
+        "%xmm0",
+        "%xmm1",
+        "%xmm1"
+      ],
+      "width_bits": 128,
+      "uops": [
+        {
+          "kind": "scalar_fp_add",
+          "category": "scalar_compute",
+          "execution_class": "scalar_fp",
+          "source_line": 29
+        }
+      ]
+    },
+    {
+      "index": 19,
+      "source_line": 30,
+      "mnemonic": "vmovss",
+      "form": "memory_store",
+      "operands": [
+        "%xmm1",
+        "(%rsi)"
+      ],
+      "width_bits": 128,
+      "uops": [
+        {
+          "kind": "address_generation",
+          "category": "memory",
+          "execution_class": "address_generation",
+          "source_line": 30
+        },
+        {
+          "kind": "scalar_store",
+          "category": "scalar_memory",
+          "execution_class": "store_data",
+          "source_line": 30
+        }
+      ],
+      "profile_opcode_recipe": {
+        "key": "vmovss:xmm,memory",
+        "recipe": {
+          "required_features": [
+            "avx"
+          ],
+          "decoded_macro_ops": 1,
+          "retire_macro_ops": 1,
+          "uops": [
+            {
+              "id": "agu",
+              "kind": "address_generation",
+              "latency_cycles": 0,
+              "issue_interval_cycles": 1,
+              "resource_choices": [
+                "address-generation"
+              ],
+              "resource_occupancy_cycles": 1
+            },
+            {
+              "id": "store",
+              "kind": "store_data",
+              "latency_cycles": 1,
+              "issue_interval_cycles": 1,
+              "resource_choices": [
+                "store-data"
+              ],
+              "resource_occupancy_cycles": 1,
+              "depends_on": [
+                "agu"
+              ]
+            }
+          ],
+          "evidence": [
+            "llvm-znver4-scheduling-model"
+          ]
+        }
+      }
+    },
+    {
+      "index": 20,
+      "source_line": 31,
+      "mnemonic": "vzeroupper",
+      "form": "register",
+      "operands": [],
+      "width_bits": 32,
+      "uops": [
+        {
+          "kind": "vector_config",
+          "category": "vector_control",
+          "execution_class": "vector_config",
+          "source_line": 31
+        }
+      ],
+      "profile_opcode_recipe": {
+        "key": "vzeroupper:",
+        "recipe": {
+          "required_features": [
+            "avx"
+          ],
+          "decoded_macro_ops": 1,
+          "retire_macro_ops": 1,
+          "uops": [
+            {
+              "id": "vector-state",
+              "kind": "vector_integer",
+              "latency_cycles": 1,
+              "issue_interval_cycles": 0.5,
+              "resource_choices": [
+                "vector-integer"
+              ],
+              "resource_occupancy_cycles": 1
+            }
+          ],
+          "evidence": [
+            "llvm-znver4-scheduling-model"
+          ]
+        }
+      }
+    },
+    {
+      "index": 21,
+      "source_line": 32,
+      "mnemonic": "ret",
+      "form": "register",
+      "operands": [],
+      "width_bits": 32,
+      "uops": [
+        {
+          "kind": "return",
+          "category": "control",
+          "execution_class": "branch",
+          "source_line": 32
+        }
+      ]
+    },
+    {
+      "index": 22,
+      "source_line": 36,
+      "mnemonic": "vxorpd",
+      "form": "register",
+      "operands": [
+        "%xmm0",
+        "%xmm0",
+        "%xmm0"
+      ],
+      "width_bits": 128,
+      "uops": [
+        {
+          "kind": "vector_move",
+          "category": "vector_move",
+          "execution_class": "vector_fp",
+          "source_line": 36
+        }
+      ],
+      "profile_opcode_recipe": {
+        "key": "vxorpd:xmm,xmm,xmm",
+        "recipe": {
+          "required_features": [
+            "avx512f"
+          ],
+          "decoded_macro_ops": 1,
+          "retire_macro_ops": 1,
+          "uops": [
+            {
+              "id": "move",
+              "kind": "vector_fp",
+              "latency_cycles": 0,
+              "issue_interval_cycles": 0.5,
+              "resource_choices": [
+                "vector-fp"
+              ],
+              "resource_occupancy_cycles": 1
+            }
+          ],
+          "evidence": [
+            "llvm-znver4-scheduling-model"
+          ],
+          "notes": "LLVM models these eliminated register moves as zero latency."
+        }
+      }
+    },
+    {
+      "index": 23,
+      "source_line": 37,
+      "mnemonic": "jmp",
+      "form": "register",
+      "operands": [
+        ".L2"
+      ],
+      "width_bits": 32,
+      "uops": [
+        {
+          "kind": "branch",
+          "category": "control",
+          "execution_class": "branch",
+          "source_line": 37
+        }
+      ]
+    }
+  ],
+  "uops": [
+    {
+      "kind": "scalar_alu",
+      "category": "scalar",
+      "execution_class": "scalar_alu",
+      "source_line": 7,
+      "resource_binding": null,
+      "timing_status": "unmodeled_profile_class"
+    },
+    {
+      "kind": "branch",
+      "category": "control",
+      "execution_class": "branch",
+      "source_line": 8,
+      "resource_binding": null,
+      "timing_status": "unmodeled_profile_class"
+    },
+    {
+      "kind": "scalar_alu",
+      "category": "scalar",
+      "execution_class": "scalar_alu",
+      "source_line": 9,
+      "resource_binding": null,
+      "timing_status": "unmodeled_profile_class"
+    },
+    {
+      "kind": "scalar_alu",
+      "category": "scalar",
+      "execution_class": "scalar_alu",
+      "source_line": 10,
+      "resource_binding": null,
+      "timing_status": "unmodeled_profile_class"
+    },
+    {
+      "kind": "vector_move",
+      "category": "vector_move",
+      "execution_class": "vector_fp",
+      "source_line": 11,
+      "resource_binding": {
+        "id": "vector-fp",
+        "kind": "vector_fp",
+        "capacity": 4,
+        "width_bits": 256,
+        "bytes_per_cycle": null
+      },
+      "timing_status": "profile_recipe_present",
+      "opcode_recipe": "vxorps:xmm,xmm,xmm"
+    },
+    {
+      "kind": "address_generation",
+      "category": "memory",
+      "execution_class": "address_generation",
+      "source_line": 15,
+      "resource_binding": {
+        "id": "address-generation",
+        "kind": "address_generation",
+        "capacity": 3,
+        "width_bits": null,
+        "bytes_per_cycle": null
+      },
+      "timing_status": "profile_recipe_present",
+      "opcode_recipe": "vmovups:memory,zmm"
+    },
+    {
+      "kind": "vector_load",
+      "category": "vector_memory",
+      "execution_class": "load_data",
+      "source_line": 15,
+      "resource_binding": {
+        "id": "load-data",
+        "kind": "load_data",
+        "capacity": 2,
+        "width_bits": null,
+        "bytes_per_cycle": 62
+      },
+      "timing_status": "profile_recipe_present",
+      "opcode_recipe": "vmovups:memory,zmm"
+    },
+    {
+      "kind": "address_generation",
+      "category": "memory",
+      "execution_class": "address_generation",
+      "source_line": 16,
+      "resource_binding": {
+        "id": "address-generation",
+        "kind": "address_generation",
+        "capacity": 3,
+        "width_bits": null,
+        "bytes_per_cycle": null
+      },
+      "timing_status": "profile_recipe_present",
+      "opcode_recipe": "vfmadd231ps:memory,zmm,zmm"
+    },
+    {
+      "kind": "vector_load",
+      "category": "vector_memory",
+      "execution_class": "load_data",
+      "source_line": 16,
+      "resource_binding": {
+        "id": "load-data",
+        "kind": "load_data",
+        "capacity": 2,
+        "width_bits": null,
+        "bytes_per_cycle": 62
+      },
+      "timing_status": "profile_recipe_present",
+      "opcode_recipe": "vfmadd231ps:memory,zmm,zmm"
+    },
+    {
+      "kind": "vector_fp_fma",
+      "category": "vector_compute",
+      "execution_class": "vector_fp",
+      "source_line": 16,
+      "resource_binding": {
+        "id": "vector-fp",
+        "kind": "vector_fp",
+        "capacity": 4,
+        "width_bits": 256,
+        "bytes_per_cycle": null
+      },
+      "timing_status": "profile_recipe_present",
+      "opcode_recipe": "vfmadd231ps:memory,zmm,zmm"
+    },
+    {
+      "kind": "scalar_alu",
+      "category": "scalar",
+      "execution_class": "scalar_alu",
+      "source_line": 17,
+      "resource_binding": null,
+      "timing_status": "unmodeled_profile_class"
+    },
+    {
+      "kind": "scalar_alu",
+      "category": "scalar",
+      "execution_class": "scalar_alu",
+      "source_line": 18,
+      "resource_binding": null,
+      "timing_status": "unmodeled_profile_class"
+    },
+    {
+      "kind": "branch",
+      "category": "control",
+      "execution_class": "branch",
+      "source_line": 19,
+      "resource_binding": null,
+      "timing_status": "unmodeled_profile_class"
+    },
+    {
+      "kind": "vector_shuffle",
+      "category": "vector_permutation",
+      "execution_class": "shuffle",
+      "source_line": 21,
+      "resource_binding": {
+        "id": "shuffle",
+        "kind": "shuffle",
+        "capacity": 2,
+        "width_bits": 256,
+        "bytes_per_cycle": null
+      },
+      "timing_status": "profile_recipe_present",
+      "opcode_recipe": "vextractf64x4:immediate,zmm,ymm"
+    },
+    {
+      "kind": "vector_fp_add",
+      "category": "vector_compute",
+      "execution_class": "vector_fp",
+      "source_line": 22,
+      "resource_binding": {
+        "id": "vector-fp",
+        "kind": "vector_fp",
+        "capacity": 4,
+        "width_bits": 256,
+        "bytes_per_cycle": null
+      },
+      "timing_status": "profile_recipe_present",
+      "opcode_recipe": "vaddps:ymm,ymm,ymm"
+    },
+    {
+      "kind": "vector_shuffle",
+      "category": "vector_permutation",
+      "execution_class": "shuffle",
+      "source_line": 23,
+      "resource_binding": {
+        "id": "shuffle",
+        "kind": "shuffle",
+        "capacity": 2,
+        "width_bits": 256,
+        "bytes_per_cycle": null
+      },
+      "timing_status": "profile_recipe_present",
+      "opcode_recipe": "vextractf128:immediate,ymm,xmm"
+    },
+    {
+      "kind": "vector_fp_add",
+      "category": "vector_compute",
+      "execution_class": "vector_fp",
+      "source_line": 24,
+      "resource_binding": {
+        "id": "vector-fp",
+        "kind": "vector_fp",
+        "capacity": 4,
+        "width_bits": 256,
+        "bytes_per_cycle": null
+      },
+      "timing_status": "profile_recipe_present",
+      "opcode_recipe": "vaddps:xmm,xmm,xmm"
+    },
+    {
+      "kind": "vector_shuffle",
+      "category": "vector_permutation",
+      "execution_class": "shuffle",
+      "source_line": 25,
+      "resource_binding": {
+        "id": "shuffle",
+        "kind": "shuffle",
+        "capacity": 2,
+        "width_bits": 256,
+        "bytes_per_cycle": null
+      },
+      "timing_status": "profile_recipe_present",
+      "opcode_recipe": "vpermilps:immediate,xmm,xmm"
+    },
+    {
+      "kind": "vector_fp_add",
+      "category": "vector_compute",
+      "execution_class": "vector_fp",
+      "source_line": 26,
+      "resource_binding": {
+        "id": "vector-fp",
+        "kind": "vector_fp",
+        "capacity": 4,
+        "width_bits": 256,
+        "bytes_per_cycle": null
+      },
+      "timing_status": "profile_recipe_present",
+      "opcode_recipe": "vaddps:xmm,xmm,xmm"
+    },
+    {
+      "kind": "vector_move",
+      "category": "vector_move",
+      "execution_class": "vector_fp",
+      "source_line": 27,
+      "resource_binding": {
+        "id": "vector-fp",
+        "kind": "vector_fp",
+        "capacity": 4,
+        "width_bits": 256,
+        "bytes_per_cycle": null
+      },
+      "timing_status": "profile_recipe_present",
+      "opcode_recipe": "vmovaps:xmm,xmm"
+    },
+    {
+      "kind": "vector_shuffle",
+      "category": "vector_permutation",
+      "execution_class": "shuffle",
+      "source_line": 28,
+      "resource_binding": {
+        "id": "shuffle",
+        "kind": "shuffle",
+        "capacity": 2,
+        "width_bits": 256,
+        "bytes_per_cycle": null
+      },
+      "timing_status": "profile_recipe_present",
+      "opcode_recipe": "vshufps:immediate,xmm,xmm,xmm"
+    },
+    {
+      "kind": "scalar_fp_add",
+      "category": "scalar_compute",
+      "execution_class": "scalar_fp",
+      "source_line": 29,
+      "resource_binding": null,
+      "timing_status": "unmodeled_profile_class"
+    },
+    {
+      "kind": "address_generation",
+      "category": "memory",
+      "execution_class": "address_generation",
+      "source_line": 30,
+      "resource_binding": {
+        "id": "address-generation",
+        "kind": "address_generation",
+        "capacity": 3,
+        "width_bits": null,
+        "bytes_per_cycle": null
+      },
+      "timing_status": "profile_recipe_present",
+      "opcode_recipe": "vmovss:xmm,memory"
+    },
+    {
+      "kind": "scalar_store",
+      "category": "scalar_memory",
+      "execution_class": "store_data",
+      "source_line": 30,
+      "resource_binding": {
+        "id": "store-data",
+        "kind": "store_data",
+        "capacity": 1,
+        "width_bits": null,
+        "bytes_per_cycle": 32
+      },
+      "timing_status": "profile_recipe_present",
+      "opcode_recipe": "vmovss:xmm,memory"
+    },
+    {
+      "kind": "vector_config",
+      "category": "vector_control",
+      "execution_class": "vector_config",
+      "source_line": 31,
+      "resource_binding": null,
+      "timing_status": "unmodeled_profile_class"
+    },
+    {
+      "kind": "return",
+      "category": "control",
+      "execution_class": "branch",
+      "source_line": 32,
+      "resource_binding": null,
+      "timing_status": "unmodeled_profile_class"
+    },
+    {
+      "kind": "vector_move",
+      "category": "vector_move",
+      "execution_class": "vector_fp",
+      "source_line": 36,
+      "resource_binding": {
+        "id": "vector-fp",
+        "kind": "vector_fp",
+        "capacity": 4,
+        "width_bits": 256,
+        "bytes_per_cycle": null
+      },
+      "timing_status": "profile_recipe_present",
+      "opcode_recipe": "vxorpd:xmm,xmm,xmm"
+    },
+    {
+      "kind": "branch",
+      "category": "control",
+      "execution_class": "branch",
+      "source_line": 37,
+      "resource_binding": null,
+      "timing_status": "unmodeled_profile_class"
+    }
+  ],
+  "vector_state_final": null,
+  "statistics": {
+    "instruction_count": 24,
+    "uop_count": 28,
+    "instructions_by_mnemonic": {
+      "addq": 1,
+      "cmpq": 1,
+      "jb": 1,
+      "je": 1,
+      "jmp": 1,
+      "leaq": 1,
+      "ret": 1,
+      "testq": 1,
+      "vaddps": 3,
+      "vaddss": 1,
+      "vextractf128": 1,
+      "vextractf64x4": 1,
+      "vfmadd231ps": 1,
+      "vmovaps": 1,
+      "vmovss": 1,
+      "vmovups": 1,
+      "vpermilps": 1,
+      "vshufps": 1,
+      "vxorpd": 1,
+      "vxorps": 1,
+      "vzeroupper": 1,
+      "xorl": 1
+    },
+    "uops_by_kind": {
+      "address_generation": 3,
+      "branch": 3,
+      "return": 1,
+      "scalar_alu": 5,
+      "scalar_fp_add": 1,
+      "scalar_store": 1,
+      "vector_config": 1,
+      "vector_fp_add": 3,
+      "vector_fp_fma": 1,
+      "vector_load": 2,
+      "vector_move": 3,
+      "vector_shuffle": 4
+    }
+  },
+  "profile_id": "amd-zen4-epyc-9684x",
+  "profile_status": "calibrated",
+  "binding": {
+    "resource_classes_unbound": [
+      "branch",
+      "scalar_alu",
+      "scalar_fp",
+      "vector_config"
+    ],
+    "uop_kinds_without_opcode_timing": [],
+    "uops_with_profile_opcode_timing": 17,
+    "instructions_with_profile_opcode_timing": 14,
+    "note": "No timing default is synthesized by this pass."
+  },
+  "profile_sha256": "c088e39a9153e1701cd38b28116b337fff06005de430cfa921fdd5d0761747f5"
+}

@@ -1,0 +1,13 @@
+x86_compiler=c++ (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0
+x86_flags=-std=c++20 -O3 -Wall -Wextra -Wpedantic -fno-stack-protector -fno-asynchronous-unwind-tables -fno-unwind-tables -fno-exceptions -fno-rtti -fno-pie -fcf-protection=none -I/nfs/home/yuweijie/project/amd_perf/softmax_sim_avx512/kernel -mavx512f -mavx512dq -mavx512bw -mavx512vl -mfma
+rvv_compiler=riscv64-linux-gnu-g++ (Ubuntu 13.3.0-6ubuntu2~24.04) 13.3.0
+rvv_flags=-std=c++20 -O3 -Wall -Wextra -Wpedantic -fno-stack-protector -fno-asynchronous-unwind-tables -fno-unwind-tables -fno-exceptions -fno-rtti -fno-pie -fcf-protection=none -I/nfs/home/yuweijie/project/amd_perf/softmax_sim_avx512/kernel -march=rv64gcv -mabi=lp64d
+x86_source_sha256=85492dc2777c46276c038c56a5d0e70f2575e5f0255c4632ff33c148684db4d6
+rvv_source_sha256=2e4aabade0e2394706f9094e11356d6da0c32dd1288315af706fa381f2f435f5
+x86_assembly_sha256=47699f66bfbd3b818727196ddcf06120341e392f62e3528e923841e0f701ee04
+rvv_assembly_sha256=1b70752503d723b296938656590b48085ed96940c14a6dcc71aa63d5f16fc1f9
+x86_recipe_sha256=75f021308eb45f536707b6678996fc4f701102a1fd1a909a08d7da036cc4ead9
+rvv_recipe_sha256=9218417f8df1740dad3c5033f23e5e8be64165a064f305d498daba5d8d3becdf
+uop_catalog_sha256=dbfa44215a3d751980ca9a5456e1d2d0526ee8e1959b2b0ccc8ef7f6e8079c42
+profile_sha256=c088e39a9153e1701cd38b28116b337fff06005de430cfa921fdd5d0761747f5
+simulator_input=assembly_only

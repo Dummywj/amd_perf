@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Expand the current AVX-512 softmax assembly into a dynamic semantic-uop DAG."""
+"""Expand AVX-512 kernel assembly into a dynamic semantic-uop DAG."""
 
 from __future__ import annotations
 
@@ -95,6 +95,9 @@ def parse_function(path: Path, function: str) -> tuple[list[StaticInstruction], 
         if not match:
             raise ValueError(f"line {line_number}: cannot parse {original!r}")
         mnemonic = match.group(1).lower()
+        if mnemonic == "endbr64":
+            # CET landing pads do not participate in a direct-call kernel's timing.
+            continue
         if mnemonic == "retq":
             mnemonic = "ret"
         operands = tuple(split_operands(match.group(2)))
@@ -120,17 +123,70 @@ def operand_form(operands: tuple[str, ...]) -> str:
 
 
 REGISTER_ALIASES = {
-    "eax": "rax",
-    "ax": "rax",
-    "al": "rax",
-    "ecx": "rcx",
-    "cx": "rcx",
-    "cl": "rcx",
-    "edx": "rdx",
-    "dx": "rdx",
-    "dl": "rdx",
-    "esi": "rsi",
-    "edi": "rdi",
+    alias: canonical
+    for canonical, aliases in {
+        "rax": ("eax", "ax", "al", "ah"),
+        "rbx": ("ebx", "bx", "bl", "bh"),
+        "rcx": ("ecx", "cx", "cl", "ch"),
+        "rdx": ("edx", "dx", "dl", "dh"),
+        "rsi": ("esi", "si", "sil"),
+        "rdi": ("edi", "di", "dil"),
+        "rbp": ("ebp", "bp", "bpl"),
+        "rsp": ("esp", "sp", "spl"),
+        **{
+            f"r{index}": (f"r{index}d", f"r{index}w", f"r{index}b")
+            for index in range(8, 16)
+        },
+    }.items()
+    for alias in aliases
+}
+
+UNCONDITIONAL_BRANCHES = {"jmp", "jmpq"}
+CONDITIONAL_BRANCHES = {
+    "ja",
+    "jae",
+    "jb",
+    "jbe",
+    "jc",
+    "je",
+    "jg",
+    "jge",
+    "jl",
+    "jle",
+    "jna",
+    "jnae",
+    "jnb",
+    "jnbe",
+    "jnc",
+    "jne",
+    "jng",
+    "jnge",
+    "jnl",
+    "jnle",
+    "jno",
+    "jns",
+    "jnz",
+    "jo",
+    "js",
+    "jz",
+}
+BRANCHES = UNCONDITIONAL_BRANCHES | CONDITIONAL_BRANCHES
+FLAG_WRITERS = {
+    "addq",
+    "andq",
+    "cmpq",
+    "decq",
+    "incq",
+    "negq",
+    "orq",
+    "salq",
+    "sarq",
+    "shlq",
+    "shrq",
+    "subq",
+    "testq",
+    "xorl",
+    "xorq",
 }
 
 
@@ -162,32 +218,58 @@ def register_roles(instruction: StaticInstruction) -> tuple[list[str], list[str]
     operands = instruction.operands
     reads: list[str] = []
     writes: list[str] = []
-    reads_flags = mnemonic in {"je", "jne", "jb"}
-    writes_flags = mnemonic in {"testq", "cmpq", "addq", "andq", "xorl"}
+    reads_flags = mnemonic in CONDITIONAL_BRANCHES
+    writes_flags = mnemonic in FLAG_WRITERS
 
     for operand in operands:
         reads.extend(registers_in_memory(operand))
 
     registers = [canonical_register(operand) for operand in operands]
-    if mnemonic in {"je", "jne", "jb", "ret", "vzeroupper"}:
+    if mnemonic in BRANCHES | {"ret", "vzeroupper", "endbr64"}:
         pass
     elif mnemonic in {"testq", "cmpq"}:
         reads.extend(register for register in registers if register)
-    elif mnemonic in {"xorl", "vxorps"} and len(set(r for r in registers if r)) == 1:
+    elif mnemonic in {"xorl", "xorq", "vxorpd", "vxorps"} and len(
+        set(register for register in registers if register)
+    ) == 1:
         if registers and registers[-1]:
             writes.append(registers[-1])
-    elif mnemonic in {"movl", "vmovaps", "vmovss", "vmovups"}:
+    elif mnemonic in {
+        "movl",
+        "movq",
+        "movslq",
+        "movzbl",
+        "vmovaps",
+        "vmovdqu64",
+        "vmovss",
+        "vmovups",
+    }:
         if operands and ("(" in operands[-1] or "[" in operands[-1]):
             reads.extend(register for register in registers[:-1] if register)
         else:
             reads.extend(register for register in registers[:-1] if register)
             if registers and registers[-1]:
                 writes.append(registers[-1])
-    elif mnemonic in {"addq", "andq"}:
+    elif mnemonic in {
+        "addq",
+        "andq",
+        "orq",
+        "salq",
+        "sarq",
+        "shlq",
+        "shrq",
+        "subq",
+        "xorl",
+        "xorq",
+    }:
         if registers and registers[-1]:
             reads.append(registers[-1])
             writes.append(registers[-1])
         reads.extend(register for register in registers[:-1] if register)
+    elif mnemonic in {"decq", "incq", "negq", "notq"}:
+        if registers and registers[-1]:
+            reads.append(registers[-1])
+            writes.append(registers[-1])
     elif mnemonic == "leaq":
         if registers and registers[-1]:
             writes.append(registers[-1])
@@ -204,6 +286,17 @@ def parse_integer(token: str) -> int:
     return int(token.strip().removeprefix("$"), 0)
 
 
+def scalar_operand_value(token: str, registers: dict[str, int]) -> int:
+    if token.startswith("$"):
+        return parse_integer(token)
+    register = canonical_register(token)
+    if register is None:
+        raise ValueError(f"unsupported scalar operand: {token}")
+    if register not in registers:
+        raise ValueError(f"scalar register read before write: %{register}")
+    return registers[register]
+
+
 def evaluate_memory(
     operand: str, registers: dict[str, int], constants: dict[str, int]
 ) -> tuple[int, str]:
@@ -212,13 +305,13 @@ def evaluate_memory(
         raise ValueError(f"unsupported memory operand: {operand}")
     displacement = match.group("disp").strip()
     label = None
-    if displacement.startswith(".L"):
+    try:
+        offset = int(displacement, 0) if displacement else 0
+    except ValueError:
         label = displacement
         if label not in constants:
             constants[label] = 0x400000 + len(constants) * 4
         offset = constants[label]
-    else:
-        offset = int(displacement, 0) if displacement else 0
     base = canonical_register(match.group("base") or "")
     index = canonical_register(match.group("index") or "")
     scale = int(match.group("scale") or "1")
@@ -232,8 +325,20 @@ def evaluate_memory(
 
 
 def access_bytes(instruction: StaticInstruction) -> int:
-    if instruction.mnemonic in {"vmovss", "vbroadcastss"}:
+    if instruction.mnemonic in {"movb"}:
+        return 1
+    if instruction.mnemonic in {"movw"}:
+        return 2
+    if instruction.mnemonic in {"movl", "vmovss", "vbroadcastss"}:
         return 4
+    if instruction.mnemonic in {
+        "movq",
+        "vmovsd",
+        "vmovlps",
+        "vmovhps",
+        "vbroadcastsd",
+    }:
+        return 8
     width = 32
     for operand in instruction.operands:
         match = re.search(r"%(zmm|ymm|xmm)\d+", operand)
@@ -249,48 +354,157 @@ def update_scalar_state(
     state: dict[str, int | bool],
     labels: dict[str, int],
 ) -> None:
+    mask = (1 << 64) - 1
+
+    def write_flags(result: int, *, cf: bool = False, of: bool = False) -> None:
+        value = result & mask
+        state["zf"] = value == 0
+        state["cf"] = cf
+        state["sf"] = bool(value & (1 << 63))
+        state["of"] = of
+
+    def write_register(destination_token: str, value: int) -> None:
+        destination = canonical_register(destination_token)
+        if destination:
+            # Every 32-bit general-purpose write zero-extends to 64 bits.
+            name = destination_token.lstrip("%").lower()
+            width_mask = (
+                (1 << 32) - 1
+                if name.endswith("d") or name.startswith("e")
+                else mask
+            )
+            registers[destination] = value & width_mask
+
     mnemonic = instruction.mnemonic
     operands = instruction.operands
-    if mnemonic in {"xorl", "movl"}:
+    if mnemonic in {"movl", "movq"}:
+        write_register(operands[-1], scalar_operand_value(operands[0], registers))
+    elif mnemonic == "movslq":
+        value = scalar_operand_value(operands[0], registers) & ((1 << 32) - 1)
+        write_register(operands[-1], value - (1 << 32) if value & (1 << 31) else value)
+    elif mnemonic == "movzbl":
+        write_register(operands[-1], scalar_operand_value(operands[0], registers) & 0xFF)
+    elif mnemonic in {"addq", "subq"}:
         destination = canonical_register(operands[-1])
         if destination:
-            registers[destination] = 0 if mnemonic == "xorl" else parse_integer(operands[0])
-    elif mnemonic == "addq":
+            old = scalar_operand_value(operands[-1], registers)
+            source = scalar_operand_value(operands[0], registers) & mask
+            if mnemonic == "addq":
+                full_result = old + source
+                result = full_result & mask
+                overflow = bool((~(old ^ source) & (old ^ result)) & (1 << 63))
+                write_flags(result, cf=full_result > mask, of=overflow)
+            else:
+                result = (old - source) & mask
+                overflow = bool(((old ^ source) & (old ^ result)) & (1 << 63))
+                write_flags(result, cf=old < source, of=overflow)
+            registers[destination] = result
+    elif mnemonic in {"andq", "orq", "xorl", "xorq"}:
         destination = canonical_register(operands[-1])
-        registers[destination] += parse_integer(operands[0])
-    elif mnemonic == "andq":
+        if destination:
+            left = scalar_operand_value(operands[-1], registers)
+            right = scalar_operand_value(operands[0], registers)
+            if mnemonic == "andq":
+                result = left & right
+            elif mnemonic == "orq":
+                result = left | right
+            else:
+                result = left ^ right
+            write_register(operands[-1], result)
+            write_flags(result)
+    elif mnemonic in {"salq", "sarq", "shlq", "shrq"}:
         destination = canonical_register(operands[-1])
-        registers[destination] &= parse_integer(operands[0]) & ((1 << 64) - 1)
+        if destination:
+            count = scalar_operand_value(operands[0], registers) & 0x3F
+            old = scalar_operand_value(operands[-1], registers) & mask
+            if count:
+                if mnemonic in {"salq", "shlq"}:
+                    result = (old << count) & mask
+                    carry = bool((old >> (64 - count)) & 1)
+                elif mnemonic == "shrq":
+                    result = old >> count
+                    carry = bool((old >> (count - 1)) & 1)
+                else:
+                    signed = old - (1 << 64) if old & (1 << 63) else old
+                    result = (signed >> count) & mask
+                    carry = bool((old >> (count - 1)) & 1)
+                registers[destination] = result
+                write_flags(result, cf=carry)
+    elif mnemonic in {"decq", "incq"}:
+        destination = canonical_register(operands[-1])
+        if destination:
+            old_cf = bool(state["cf"])
+            old = scalar_operand_value(operands[-1], registers) & mask
+            delta = 1 if mnemonic == "incq" else -1
+            result = (old + delta) & mask
+            registers[destination] = result
+            overflow = (
+                old == (1 << 63) - 1
+                if mnemonic == "incq"
+                else old == (1 << 63)
+            )
+            write_flags(result, cf=old_cf, of=overflow)
+    elif mnemonic in {"negq", "notq"}:
+        destination = canonical_register(operands[-1])
+        if destination:
+            old = scalar_operand_value(operands[-1], registers) & mask
+            result = (-old if mnemonic == "negq" else ~old) & mask
+            registers[destination] = result
+            if mnemonic == "negq":
+                write_flags(result, cf=old != 0, of=old == (1 << 63))
     elif mnemonic == "leaq":
         destination = canonical_register(operands[-1])
         address, _ = evaluate_memory(operands[0], registers, labels)
         registers[destination] = address
     elif mnemonic in {"testq", "cmpq"}:
         if mnemonic == "testq":
-            left = registers[canonical_register(operands[-1])]
-            right = registers[canonical_register(operands[0])]
+            left = scalar_operand_value(operands[-1], registers)
+            right = scalar_operand_value(operands[0], registers)
             result = left & right
-            state["zf"] = result == 0
-            state["cf"] = False
+            write_flags(result)
         else:
-            left_operand, right_operand = operands[0], operands[-1]
-            left = (
-                parse_integer(left_operand)
-                if left_operand.startswith("$")
-                else registers[canonical_register(left_operand)]
-            )
-            right = registers[canonical_register(right_operand)]
-            state["zf"] = right == left
-            state["cf"] = right < left
+            source = scalar_operand_value(operands[0], registers) & mask
+            destination = scalar_operand_value(operands[-1], registers) & mask
+            result = (destination - source) & mask
+            overflow = bool(((destination ^ source) & (destination ^ result)) & (1 << 63))
+            write_flags(result, cf=destination < source, of=overflow)
 
 
 def branch_taken(mnemonic: str, state: dict[str, int | bool]) -> bool:
-    if mnemonic == "je":
-        return bool(state["zf"])
-    if mnemonic == "jne":
-        return not bool(state["zf"])
-    if mnemonic == "jb":
-        return bool(state["cf"])
+    zf = bool(state["zf"])
+    cf = bool(state["cf"])
+    sf = bool(state.get("sf", False))
+    of = bool(state.get("of", False))
+    if mnemonic in UNCONDITIONAL_BRANCHES:
+        return True
+    if mnemonic in {"je", "jz"}:
+        return zf
+    if mnemonic in {"jne", "jnz"}:
+        return not zf
+    if mnemonic in {"jb", "jc", "jnae"}:
+        return cf
+    if mnemonic in {"jae", "jnb", "jnc"}:
+        return not cf
+    if mnemonic in {"jbe", "jna"}:
+        return cf or zf
+    if mnemonic in {"ja", "jnbe"}:
+        return not cf and not zf
+    if mnemonic in {"jl", "jnge"}:
+        return sf != of
+    if mnemonic in {"jge", "jnl"}:
+        return sf == of
+    if mnemonic in {"jle", "jng"}:
+        return zf or sf != of
+    if mnemonic in {"jg", "jnle"}:
+        return not zf and sf == of
+    if mnemonic == "jo":
+        return of
+    if mnemonic == "jno":
+        return not of
+    if mnemonic == "js":
+        return sf
+    if mnemonic == "jns":
+        return not sf
     raise ValueError(f"unsupported branch: {mnemonic}")
 
 
@@ -317,13 +531,18 @@ def build_dynamic_trace(
     uop_kinds_path: Path | None = None,
 ) -> dict[str, Any]:
     if count <= 0 or count % 16:
-        raise ValueError("x86 softmax requires count > 0 and divisible by 16")
+        raise ValueError("x86 AVX-512 kernel requires count > 0 and divisible by 16")
     static, labels = parse_function(assembly, function)
     if uop_kinds_path is None:
         uop_kinds_path = recipe_path.parent.parent / "uops/uop_kinds.yaml"
     recipes = load_recipe(recipe_path, uop_kinds_path)
     registers = {"rdi": 0x100000, "rsi": 0x200000, "rdx": count, "rax": 0, "rcx": 0}
-    flags: dict[str, int | bool] = {"zf": False, "cf": False}
+    flags: dict[str, int | bool] = {
+        "zf": False,
+        "cf": False,
+        "sf": False,
+        "of": False,
+    }
     constants: dict[str, int] = {}
     last_register_writer: dict[str, str] = {}
     last_flags_writer: str | None = None
@@ -420,7 +639,7 @@ def build_dynamic_trace(
         update_scalar_state(item, registers, flags, constants)
         if item.mnemonic == "ret":
             break
-        if item.mnemonic in {"je", "jne", "jb"} and branch_taken(item.mnemonic, flags):
+        if item.mnemonic in BRANCHES and branch_taken(item.mnemonic, flags):
             target = item.operands[-1]
             if target not in labels:
                 raise ValueError(f"unknown branch target: {target}")
@@ -470,7 +689,9 @@ def build_dynamic_trace(
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(
+        description="Expand an AVX-512 kernel into a dynamic semantic-uop trace"
+    )
     parser.add_argument("--assembly", type=Path, required=True)
     parser.add_argument("--function", default="softmax_avx512_f32")
     parser.add_argument("--recipe", type=Path, required=True)

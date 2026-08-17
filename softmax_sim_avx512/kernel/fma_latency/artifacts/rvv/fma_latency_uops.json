@@ -1,0 +1,1688 @@
+{
+  "trace_version": 1,
+  "isa": "rvv",
+  "assembly": "kernel/fma_latency/artifacts/rvv/fma_latency_rvv.s",
+  "function": "fma_latency_rvv_f32",
+  "input_mode": "assembly_only",
+  "provenance": {
+    "assembly_sha256": "1b70752503d723b296938656590b48085ed96940c14a6dcc71aa63d5f16fc1f9",
+    "recipe_sha256": "9218417f8df1740dad3c5033f23e5e8be64165a064f305d498daba5d8d3becdf",
+    "uop_catalog_sha256": "dbfa44215a3d751980ca9a5456e1d2d0526ee8e1959b2b0ccc8ef7f6e8079c42"
+  },
+  "instructions": [
+    {
+      "index": 0,
+      "source_line": 11,
+      "mnemonic": "li",
+      "form": "any",
+      "operands": [
+        "a5",
+        "16"
+      ],
+      "width_bits": "runtime",
+      "uops": [
+        {
+          "kind": "scalar_move",
+          "category": "scalar",
+          "execution_class": "scalar_alu",
+          "source_line": 11
+        }
+      ]
+    },
+    {
+      "index": 1,
+      "source_line": 12,
+      "mnemonic": "vsetvli",
+      "form": "any",
+      "operands": [
+        "a5",
+        "a5",
+        "e32",
+        "m4",
+        "ta",
+        "ma"
+      ],
+      "width_bits": "runtime",
+      "uops": [
+        {
+          "kind": "vector_config",
+          "category": "vector_control",
+          "execution_class": "vector_config",
+          "source_line": 12
+        }
+      ],
+      "vector_state": {
+        "sew_bits": 32,
+        "lmul": "m4",
+        "vl": "runtime",
+        "vl_operand": "a5",
+        "tail_policy": "ta",
+        "mask_policy": "ma"
+      }
+    },
+    {
+      "index": 2,
+      "source_line": 13,
+      "mnemonic": "vmv.v.i",
+      "form": "any",
+      "operands": [
+        "v28",
+        "0"
+      ],
+      "width_bits": "runtime",
+      "uops": [
+        {
+          "kind": "vector_move",
+          "category": "vector_move",
+          "execution_class": "vector_fp",
+          "source_line": 13
+        }
+      ],
+      "vector_state": {
+        "sew_bits": 32,
+        "lmul": "m4",
+        "vl": "runtime",
+        "vl_operand": "a5",
+        "tail_policy": "ta",
+        "mask_policy": "ma"
+      }
+    },
+    {
+      "index": 3,
+      "source_line": 14,
+      "mnemonic": "beq",
+      "form": "any",
+      "operands": [
+        "a2",
+        "zero",
+        ".L1"
+      ],
+      "width_bits": "runtime",
+      "uops": [
+        {
+          "kind": "branch",
+          "category": "control",
+          "execution_class": "branch",
+          "source_line": 14
+        }
+      ]
+    },
+    {
+      "index": 4,
+      "source_line": 15,
+      "mnemonic": "lui",
+      "form": "any",
+      "operands": [
+        "a4",
+        "%hi(.LC1)"
+      ],
+      "width_bits": "runtime",
+      "uops": [
+        {
+          "kind": "scalar_move",
+          "category": "scalar",
+          "execution_class": "scalar_alu",
+          "source_line": 15
+        }
+      ]
+    },
+    {
+      "index": 5,
+      "source_line": 16,
+      "mnemonic": "flw",
+      "form": "any",
+      "operands": [
+        "fa5",
+        "%lo(.LC1)(a4)"
+      ],
+      "width_bits": "runtime",
+      "uops": [
+        {
+          "kind": "scalar_load",
+          "category": "scalar_memory",
+          "execution_class": "load_data",
+          "source_line": 16
+        }
+      ]
+    },
+    {
+      "index": 6,
+      "source_line": 17,
+      "mnemonic": "lui",
+      "form": "any",
+      "operands": [
+        "a4",
+        "%hi(.LC0)"
+      ],
+      "width_bits": "runtime",
+      "uops": [
+        {
+          "kind": "scalar_move",
+          "category": "scalar",
+          "execution_class": "scalar_alu",
+          "source_line": 17
+        }
+      ]
+    },
+    {
+      "index": 7,
+      "source_line": 18,
+      "mnemonic": "flw",
+      "form": "any",
+      "operands": [
+        "fa4",
+        "%lo(.LC0)(a4)"
+      ],
+      "width_bits": "runtime",
+      "uops": [
+        {
+          "kind": "scalar_load",
+          "category": "scalar_memory",
+          "execution_class": "load_data",
+          "source_line": 18
+        }
+      ]
+    },
+    {
+      "index": 8,
+      "source_line": 19,
+      "mnemonic": "li",
+      "form": "any",
+      "operands": [
+        "a3",
+        "0"
+      ],
+      "width_bits": "runtime",
+      "uops": [
+        {
+          "kind": "scalar_move",
+          "category": "scalar",
+          "execution_class": "scalar_alu",
+          "source_line": 19
+        }
+      ]
+    },
+    {
+      "index": 9,
+      "source_line": 20,
+      "mnemonic": "vfmv.v.f",
+      "form": "any",
+      "operands": [
+        "v24",
+        "fa4"
+      ],
+      "width_bits": "runtime",
+      "uops": [
+        {
+          "kind": "vector_broadcast",
+          "category": "vector_move",
+          "execution_class": "vector_fp",
+          "source_line": 20
+        }
+      ],
+      "vector_state": {
+        "sew_bits": 32,
+        "lmul": "m4",
+        "vl": "runtime",
+        "vl_operand": "a5",
+        "tail_policy": "ta",
+        "mask_policy": "ma"
+      }
+    },
+    {
+      "index": 10,
+      "source_line": 22,
+      "mnemonic": "slli",
+      "form": "any",
+      "operands": [
+        "a4",
+        "a3",
+        "2"
+      ],
+      "width_bits": "runtime",
+      "uops": [
+        {
+          "kind": "scalar_alu",
+          "category": "scalar",
+          "execution_class": "scalar_alu",
+          "source_line": 22
+        }
+      ]
+    },
+    {
+      "index": 11,
+      "source_line": 23,
+      "mnemonic": "add",
+      "form": "any",
+      "operands": [
+        "a6",
+        "a0",
+        "a4"
+      ],
+      "width_bits": "runtime",
+      "uops": [
+        {
+          "kind": "scalar_alu",
+          "category": "scalar",
+          "execution_class": "scalar_alu",
+          "source_line": 23
+        }
+      ]
+    },
+    {
+      "index": 12,
+      "source_line": 24,
+      "mnemonic": "vle32.v",
+      "form": "any",
+      "operands": [
+        "v8",
+        "0(a6)"
+      ],
+      "width_bits": "runtime",
+      "uops": [
+        {
+          "kind": "address_generation",
+          "category": "memory",
+          "execution_class": "address_generation",
+          "source_line": 24
+        },
+        {
+          "kind": "vector_load",
+          "category": "vector_memory",
+          "execution_class": "load_data",
+          "source_line": 24
+        }
+      ],
+      "vector_state": {
+        "sew_bits": 32,
+        "lmul": "m4",
+        "vl": "runtime",
+        "vl_operand": "a5",
+        "tail_policy": "ta",
+        "mask_policy": "ma"
+      }
+    },
+    {
+      "index": 13,
+      "source_line": 25,
+      "mnemonic": "vfadd.vv",
+      "form": "any",
+      "operands": [
+        "v28",
+        "v28",
+        "v8"
+      ],
+      "width_bits": "runtime",
+      "uops": [
+        {
+          "kind": "vector_fp_add",
+          "category": "vector_compute",
+          "execution_class": "vector_fp",
+          "source_line": 25
+        }
+      ],
+      "vector_state": {
+        "sew_bits": 32,
+        "lmul": "m4",
+        "vl": "runtime",
+        "vl_operand": "a5",
+        "tail_policy": "ta",
+        "mask_policy": "ma"
+      }
+    },
+    {
+      "index": 14,
+      "source_line": 26,
+      "mnemonic": "vmv.v.v",
+      "form": "any",
+      "operands": [
+        "v8",
+        "v24"
+      ],
+      "width_bits": "runtime",
+      "uops": [
+        {
+          "kind": "vector_move",
+          "category": "vector_move",
+          "execution_class": "vector_fp",
+          "source_line": 26
+        }
+      ],
+      "vector_state": {
+        "sew_bits": 32,
+        "lmul": "m4",
+        "vl": "runtime",
+        "vl_operand": "a5",
+        "tail_policy": "ta",
+        "mask_policy": "ma"
+      }
+    },
+    {
+      "index": 15,
+      "source_line": 27,
+      "mnemonic": "vfmacc.vf",
+      "form": "any",
+      "operands": [
+        "v8",
+        "fa5",
+        "v28"
+      ],
+      "width_bits": "runtime",
+      "uops": [
+        {
+          "kind": "vector_fp_fma",
+          "category": "vector_compute",
+          "execution_class": "vector_fp",
+          "source_line": 27
+        }
+      ],
+      "vector_state": {
+        "sew_bits": 32,
+        "lmul": "m4",
+        "vl": "runtime",
+        "vl_operand": "a5",
+        "tail_policy": "ta",
+        "mask_policy": "ma"
+      }
+    },
+    {
+      "index": 16,
+      "source_line": 28,
+      "mnemonic": "vmv.v.v",
+      "form": "any",
+      "operands": [
+        "v28",
+        "v24"
+      ],
+      "width_bits": "runtime",
+      "uops": [
+        {
+          "kind": "vector_move",
+          "category": "vector_move",
+          "execution_class": "vector_fp",
+          "source_line": 28
+        }
+      ],
+      "vector_state": {
+        "sew_bits": 32,
+        "lmul": "m4",
+        "vl": "runtime",
+        "vl_operand": "a5",
+        "tail_policy": "ta",
+        "mask_policy": "ma"
+      }
+    },
+    {
+      "index": 17,
+      "source_line": 29,
+      "mnemonic": "vfmacc.vf",
+      "form": "any",
+      "operands": [
+        "v28",
+        "fa5",
+        "v8"
+      ],
+      "width_bits": "runtime",
+      "uops": [
+        {
+          "kind": "vector_fp_fma",
+          "category": "vector_compute",
+          "execution_class": "vector_fp",
+          "source_line": 29
+        }
+      ],
+      "vector_state": {
+        "sew_bits": 32,
+        "lmul": "m4",
+        "vl": "runtime",
+        "vl_operand": "a5",
+        "tail_policy": "ta",
+        "mask_policy": "ma"
+      }
+    },
+    {
+      "index": 18,
+      "source_line": 30,
+      "mnemonic": "vmv.v.v",
+      "form": "any",
+      "operands": [
+        "v8",
+        "v24"
+      ],
+      "width_bits": "runtime",
+      "uops": [
+        {
+          "kind": "vector_move",
+          "category": "vector_move",
+          "execution_class": "vector_fp",
+          "source_line": 30
+        }
+      ],
+      "vector_state": {
+        "sew_bits": 32,
+        "lmul": "m4",
+        "vl": "runtime",
+        "vl_operand": "a5",
+        "tail_policy": "ta",
+        "mask_policy": "ma"
+      }
+    },
+    {
+      "index": 19,
+      "source_line": 31,
+      "mnemonic": "vfmacc.vf",
+      "form": "any",
+      "operands": [
+        "v8",
+        "fa5",
+        "v28"
+      ],
+      "width_bits": "runtime",
+      "uops": [
+        {
+          "kind": "vector_fp_fma",
+          "category": "vector_compute",
+          "execution_class": "vector_fp",
+          "source_line": 31
+        }
+      ],
+      "vector_state": {
+        "sew_bits": 32,
+        "lmul": "m4",
+        "vl": "runtime",
+        "vl_operand": "a5",
+        "tail_policy": "ta",
+        "mask_policy": "ma"
+      }
+    },
+    {
+      "index": 20,
+      "source_line": 32,
+      "mnemonic": "vmv.v.v",
+      "form": "any",
+      "operands": [
+        "v28",
+        "v24"
+      ],
+      "width_bits": "runtime",
+      "uops": [
+        {
+          "kind": "vector_move",
+          "category": "vector_move",
+          "execution_class": "vector_fp",
+          "source_line": 32
+        }
+      ],
+      "vector_state": {
+        "sew_bits": 32,
+        "lmul": "m4",
+        "vl": "runtime",
+        "vl_operand": "a5",
+        "tail_policy": "ta",
+        "mask_policy": "ma"
+      }
+    },
+    {
+      "index": 21,
+      "source_line": 33,
+      "mnemonic": "vfmacc.vf",
+      "form": "any",
+      "operands": [
+        "v28",
+        "fa5",
+        "v8"
+      ],
+      "width_bits": "runtime",
+      "uops": [
+        {
+          "kind": "vector_fp_fma",
+          "category": "vector_compute",
+          "execution_class": "vector_fp",
+          "source_line": 33
+        }
+      ],
+      "vector_state": {
+        "sew_bits": 32,
+        "lmul": "m4",
+        "vl": "runtime",
+        "vl_operand": "a5",
+        "tail_policy": "ta",
+        "mask_policy": "ma"
+      }
+    },
+    {
+      "index": 22,
+      "source_line": 34,
+      "mnemonic": "vmv.v.v",
+      "form": "any",
+      "operands": [
+        "v8",
+        "v24"
+      ],
+      "width_bits": "runtime",
+      "uops": [
+        {
+          "kind": "vector_move",
+          "category": "vector_move",
+          "execution_class": "vector_fp",
+          "source_line": 34
+        }
+      ],
+      "vector_state": {
+        "sew_bits": 32,
+        "lmul": "m4",
+        "vl": "runtime",
+        "vl_operand": "a5",
+        "tail_policy": "ta",
+        "mask_policy": "ma"
+      }
+    },
+    {
+      "index": 23,
+      "source_line": 35,
+      "mnemonic": "vfmacc.vf",
+      "form": "any",
+      "operands": [
+        "v8",
+        "fa5",
+        "v28"
+      ],
+      "width_bits": "runtime",
+      "uops": [
+        {
+          "kind": "vector_fp_fma",
+          "category": "vector_compute",
+          "execution_class": "vector_fp",
+          "source_line": 35
+        }
+      ],
+      "vector_state": {
+        "sew_bits": 32,
+        "lmul": "m4",
+        "vl": "runtime",
+        "vl_operand": "a5",
+        "tail_policy": "ta",
+        "mask_policy": "ma"
+      }
+    },
+    {
+      "index": 24,
+      "source_line": 36,
+      "mnemonic": "vmv.v.v",
+      "form": "any",
+      "operands": [
+        "v28",
+        "v24"
+      ],
+      "width_bits": "runtime",
+      "uops": [
+        {
+          "kind": "vector_move",
+          "category": "vector_move",
+          "execution_class": "vector_fp",
+          "source_line": 36
+        }
+      ],
+      "vector_state": {
+        "sew_bits": 32,
+        "lmul": "m4",
+        "vl": "runtime",
+        "vl_operand": "a5",
+        "tail_policy": "ta",
+        "mask_policy": "ma"
+      }
+    },
+    {
+      "index": 25,
+      "source_line": 37,
+      "mnemonic": "vfmacc.vf",
+      "form": "any",
+      "operands": [
+        "v28",
+        "fa5",
+        "v8"
+      ],
+      "width_bits": "runtime",
+      "uops": [
+        {
+          "kind": "vector_fp_fma",
+          "category": "vector_compute",
+          "execution_class": "vector_fp",
+          "source_line": 37
+        }
+      ],
+      "vector_state": {
+        "sew_bits": 32,
+        "lmul": "m4",
+        "vl": "runtime",
+        "vl_operand": "a5",
+        "tail_policy": "ta",
+        "mask_policy": "ma"
+      }
+    },
+    {
+      "index": 26,
+      "source_line": 38,
+      "mnemonic": "vmv.v.v",
+      "form": "any",
+      "operands": [
+        "v8",
+        "v24"
+      ],
+      "width_bits": "runtime",
+      "uops": [
+        {
+          "kind": "vector_move",
+          "category": "vector_move",
+          "execution_class": "vector_fp",
+          "source_line": 38
+        }
+      ],
+      "vector_state": {
+        "sew_bits": 32,
+        "lmul": "m4",
+        "vl": "runtime",
+        "vl_operand": "a5",
+        "tail_policy": "ta",
+        "mask_policy": "ma"
+      }
+    },
+    {
+      "index": 27,
+      "source_line": 39,
+      "mnemonic": "vfmacc.vf",
+      "form": "any",
+      "operands": [
+        "v8",
+        "fa5",
+        "v28"
+      ],
+      "width_bits": "runtime",
+      "uops": [
+        {
+          "kind": "vector_fp_fma",
+          "category": "vector_compute",
+          "execution_class": "vector_fp",
+          "source_line": 39
+        }
+      ],
+      "vector_state": {
+        "sew_bits": 32,
+        "lmul": "m4",
+        "vl": "runtime",
+        "vl_operand": "a5",
+        "tail_policy": "ta",
+        "mask_policy": "ma"
+      }
+    },
+    {
+      "index": 28,
+      "source_line": 40,
+      "mnemonic": "vmv.v.v",
+      "form": "any",
+      "operands": [
+        "v28",
+        "v24"
+      ],
+      "width_bits": "runtime",
+      "uops": [
+        {
+          "kind": "vector_move",
+          "category": "vector_move",
+          "execution_class": "vector_fp",
+          "source_line": 40
+        }
+      ],
+      "vector_state": {
+        "sew_bits": 32,
+        "lmul": "m4",
+        "vl": "runtime",
+        "vl_operand": "a5",
+        "tail_policy": "ta",
+        "mask_policy": "ma"
+      }
+    },
+    {
+      "index": 29,
+      "source_line": 41,
+      "mnemonic": "vfmacc.vf",
+      "form": "any",
+      "operands": [
+        "v28",
+        "fa5",
+        "v8"
+      ],
+      "width_bits": "runtime",
+      "uops": [
+        {
+          "kind": "vector_fp_fma",
+          "category": "vector_compute",
+          "execution_class": "vector_fp",
+          "source_line": 41
+        }
+      ],
+      "vector_state": {
+        "sew_bits": 32,
+        "lmul": "m4",
+        "vl": "runtime",
+        "vl_operand": "a5",
+        "tail_policy": "ta",
+        "mask_policy": "ma"
+      }
+    },
+    {
+      "index": 30,
+      "source_line": 42,
+      "mnemonic": "vmv.v.v",
+      "form": "any",
+      "operands": [
+        "v8",
+        "v24"
+      ],
+      "width_bits": "runtime",
+      "uops": [
+        {
+          "kind": "vector_move",
+          "category": "vector_move",
+          "execution_class": "vector_fp",
+          "source_line": 42
+        }
+      ],
+      "vector_state": {
+        "sew_bits": 32,
+        "lmul": "m4",
+        "vl": "runtime",
+        "vl_operand": "a5",
+        "tail_policy": "ta",
+        "mask_policy": "ma"
+      }
+    },
+    {
+      "index": 31,
+      "source_line": 43,
+      "mnemonic": "vfmacc.vf",
+      "form": "any",
+      "operands": [
+        "v8",
+        "fa5",
+        "v28"
+      ],
+      "width_bits": "runtime",
+      "uops": [
+        {
+          "kind": "vector_fp_fma",
+          "category": "vector_compute",
+          "execution_class": "vector_fp",
+          "source_line": 43
+        }
+      ],
+      "vector_state": {
+        "sew_bits": 32,
+        "lmul": "m4",
+        "vl": "runtime",
+        "vl_operand": "a5",
+        "tail_policy": "ta",
+        "mask_policy": "ma"
+      }
+    },
+    {
+      "index": 32,
+      "source_line": 44,
+      "mnemonic": "vmv.v.v",
+      "form": "any",
+      "operands": [
+        "v28",
+        "v24"
+      ],
+      "width_bits": "runtime",
+      "uops": [
+        {
+          "kind": "vector_move",
+          "category": "vector_move",
+          "execution_class": "vector_fp",
+          "source_line": 44
+        }
+      ],
+      "vector_state": {
+        "sew_bits": 32,
+        "lmul": "m4",
+        "vl": "runtime",
+        "vl_operand": "a5",
+        "tail_policy": "ta",
+        "mask_policy": "ma"
+      }
+    },
+    {
+      "index": 33,
+      "source_line": 45,
+      "mnemonic": "vfmacc.vf",
+      "form": "any",
+      "operands": [
+        "v28",
+        "fa5",
+        "v8"
+      ],
+      "width_bits": "runtime",
+      "uops": [
+        {
+          "kind": "vector_fp_fma",
+          "category": "vector_compute",
+          "execution_class": "vector_fp",
+          "source_line": 45
+        }
+      ],
+      "vector_state": {
+        "sew_bits": 32,
+        "lmul": "m4",
+        "vl": "runtime",
+        "vl_operand": "a5",
+        "tail_policy": "ta",
+        "mask_policy": "ma"
+      }
+    },
+    {
+      "index": 34,
+      "source_line": 46,
+      "mnemonic": "vmv.v.v",
+      "form": "any",
+      "operands": [
+        "v8",
+        "v24"
+      ],
+      "width_bits": "runtime",
+      "uops": [
+        {
+          "kind": "vector_move",
+          "category": "vector_move",
+          "execution_class": "vector_fp",
+          "source_line": 46
+        }
+      ],
+      "vector_state": {
+        "sew_bits": 32,
+        "lmul": "m4",
+        "vl": "runtime",
+        "vl_operand": "a5",
+        "tail_policy": "ta",
+        "mask_policy": "ma"
+      }
+    },
+    {
+      "index": 35,
+      "source_line": 47,
+      "mnemonic": "vfmacc.vf",
+      "form": "any",
+      "operands": [
+        "v8",
+        "fa5",
+        "v28"
+      ],
+      "width_bits": "runtime",
+      "uops": [
+        {
+          "kind": "vector_fp_fma",
+          "category": "vector_compute",
+          "execution_class": "vector_fp",
+          "source_line": 47
+        }
+      ],
+      "vector_state": {
+        "sew_bits": 32,
+        "lmul": "m4",
+        "vl": "runtime",
+        "vl_operand": "a5",
+        "tail_policy": "ta",
+        "mask_policy": "ma"
+      }
+    },
+    {
+      "index": 36,
+      "source_line": 48,
+      "mnemonic": "vmv.v.v",
+      "form": "any",
+      "operands": [
+        "v28",
+        "v24"
+      ],
+      "width_bits": "runtime",
+      "uops": [
+        {
+          "kind": "vector_move",
+          "category": "vector_move",
+          "execution_class": "vector_fp",
+          "source_line": 48
+        }
+      ],
+      "vector_state": {
+        "sew_bits": 32,
+        "lmul": "m4",
+        "vl": "runtime",
+        "vl_operand": "a5",
+        "tail_policy": "ta",
+        "mask_policy": "ma"
+      }
+    },
+    {
+      "index": 37,
+      "source_line": 49,
+      "mnemonic": "vfmacc.vf",
+      "form": "any",
+      "operands": [
+        "v28",
+        "fa5",
+        "v8"
+      ],
+      "width_bits": "runtime",
+      "uops": [
+        {
+          "kind": "vector_fp_fma",
+          "category": "vector_compute",
+          "execution_class": "vector_fp",
+          "source_line": 49
+        }
+      ],
+      "vector_state": {
+        "sew_bits": 32,
+        "lmul": "m4",
+        "vl": "runtime",
+        "vl_operand": "a5",
+        "tail_policy": "ta",
+        "mask_policy": "ma"
+      }
+    },
+    {
+      "index": 38,
+      "source_line": 50,
+      "mnemonic": "add",
+      "form": "any",
+      "operands": [
+        "a4",
+        "a1",
+        "a4"
+      ],
+      "width_bits": "runtime",
+      "uops": [
+        {
+          "kind": "scalar_alu",
+          "category": "scalar",
+          "execution_class": "scalar_alu",
+          "source_line": 50
+        }
+      ]
+    },
+    {
+      "index": 39,
+      "source_line": 51,
+      "mnemonic": "vmv.v.v",
+      "form": "any",
+      "operands": [
+        "v8",
+        "v24"
+      ],
+      "width_bits": "runtime",
+      "uops": [
+        {
+          "kind": "vector_move",
+          "category": "vector_move",
+          "execution_class": "vector_fp",
+          "source_line": 51
+        }
+      ],
+      "vector_state": {
+        "sew_bits": 32,
+        "lmul": "m4",
+        "vl": "runtime",
+        "vl_operand": "a5",
+        "tail_policy": "ta",
+        "mask_policy": "ma"
+      }
+    },
+    {
+      "index": 40,
+      "source_line": 52,
+      "mnemonic": "vfmacc.vf",
+      "form": "any",
+      "operands": [
+        "v8",
+        "fa5",
+        "v28"
+      ],
+      "width_bits": "runtime",
+      "uops": [
+        {
+          "kind": "vector_fp_fma",
+          "category": "vector_compute",
+          "execution_class": "vector_fp",
+          "source_line": 52
+        }
+      ],
+      "vector_state": {
+        "sew_bits": 32,
+        "lmul": "m4",
+        "vl": "runtime",
+        "vl_operand": "a5",
+        "tail_policy": "ta",
+        "mask_policy": "ma"
+      }
+    },
+    {
+      "index": 41,
+      "source_line": 53,
+      "mnemonic": "vmv.v.v",
+      "form": "any",
+      "operands": [
+        "v28",
+        "v24"
+      ],
+      "width_bits": "runtime",
+      "uops": [
+        {
+          "kind": "vector_move",
+          "category": "vector_move",
+          "execution_class": "vector_fp",
+          "source_line": 53
+        }
+      ],
+      "vector_state": {
+        "sew_bits": 32,
+        "lmul": "m4",
+        "vl": "runtime",
+        "vl_operand": "a5",
+        "tail_policy": "ta",
+        "mask_policy": "ma"
+      }
+    },
+    {
+      "index": 42,
+      "source_line": 54,
+      "mnemonic": "vfmacc.vf",
+      "form": "any",
+      "operands": [
+        "v28",
+        "fa5",
+        "v8"
+      ],
+      "width_bits": "runtime",
+      "uops": [
+        {
+          "kind": "vector_fp_fma",
+          "category": "vector_compute",
+          "execution_class": "vector_fp",
+          "source_line": 54
+        }
+      ],
+      "vector_state": {
+        "sew_bits": 32,
+        "lmul": "m4",
+        "vl": "runtime",
+        "vl_operand": "a5",
+        "tail_policy": "ta",
+        "mask_policy": "ma"
+      }
+    },
+    {
+      "index": 43,
+      "source_line": 55,
+      "mnemonic": "add",
+      "form": "any",
+      "operands": [
+        "a3",
+        "a3",
+        "a5"
+      ],
+      "width_bits": "runtime",
+      "uops": [
+        {
+          "kind": "scalar_alu",
+          "category": "scalar",
+          "execution_class": "scalar_alu",
+          "source_line": 55
+        }
+      ]
+    },
+    {
+      "index": 44,
+      "source_line": 56,
+      "mnemonic": "vmv.v.v",
+      "form": "any",
+      "operands": [
+        "v8",
+        "v24"
+      ],
+      "width_bits": "runtime",
+      "uops": [
+        {
+          "kind": "vector_move",
+          "category": "vector_move",
+          "execution_class": "vector_fp",
+          "source_line": 56
+        }
+      ],
+      "vector_state": {
+        "sew_bits": 32,
+        "lmul": "m4",
+        "vl": "runtime",
+        "vl_operand": "a5",
+        "tail_policy": "ta",
+        "mask_policy": "ma"
+      }
+    },
+    {
+      "index": 45,
+      "source_line": 57,
+      "mnemonic": "vfmacc.vf",
+      "form": "any",
+      "operands": [
+        "v8",
+        "fa5",
+        "v28"
+      ],
+      "width_bits": "runtime",
+      "uops": [
+        {
+          "kind": "vector_fp_fma",
+          "category": "vector_compute",
+          "execution_class": "vector_fp",
+          "source_line": 57
+        }
+      ],
+      "vector_state": {
+        "sew_bits": 32,
+        "lmul": "m4",
+        "vl": "runtime",
+        "vl_operand": "a5",
+        "tail_policy": "ta",
+        "mask_policy": "ma"
+      }
+    },
+    {
+      "index": 46,
+      "source_line": 58,
+      "mnemonic": "vmv.v.v",
+      "form": "any",
+      "operands": [
+        "v28",
+        "v24"
+      ],
+      "width_bits": "runtime",
+      "uops": [
+        {
+          "kind": "vector_move",
+          "category": "vector_move",
+          "execution_class": "vector_fp",
+          "source_line": 58
+        }
+      ],
+      "vector_state": {
+        "sew_bits": 32,
+        "lmul": "m4",
+        "vl": "runtime",
+        "vl_operand": "a5",
+        "tail_policy": "ta",
+        "mask_policy": "ma"
+      }
+    },
+    {
+      "index": 47,
+      "source_line": 59,
+      "mnemonic": "vfmacc.vf",
+      "form": "any",
+      "operands": [
+        "v28",
+        "fa5",
+        "v8"
+      ],
+      "width_bits": "runtime",
+      "uops": [
+        {
+          "kind": "vector_fp_fma",
+          "category": "vector_compute",
+          "execution_class": "vector_fp",
+          "source_line": 59
+        }
+      ],
+      "vector_state": {
+        "sew_bits": 32,
+        "lmul": "m4",
+        "vl": "runtime",
+        "vl_operand": "a5",
+        "tail_policy": "ta",
+        "mask_policy": "ma"
+      }
+    },
+    {
+      "index": 48,
+      "source_line": 60,
+      "mnemonic": "vse32.v",
+      "form": "any",
+      "operands": [
+        "v28",
+        "0(a4)"
+      ],
+      "width_bits": "runtime",
+      "uops": [
+        {
+          "kind": "address_generation",
+          "category": "memory",
+          "execution_class": "address_generation",
+          "source_line": 60
+        },
+        {
+          "kind": "vector_store",
+          "category": "vector_memory",
+          "execution_class": "store_data",
+          "source_line": 60
+        }
+      ],
+      "vector_state": {
+        "sew_bits": 32,
+        "lmul": "m4",
+        "vl": "runtime",
+        "vl_operand": "a5",
+        "tail_policy": "ta",
+        "mask_policy": "ma"
+      }
+    },
+    {
+      "index": 49,
+      "source_line": 61,
+      "mnemonic": "bgtu",
+      "form": "any",
+      "operands": [
+        "a2",
+        "a3",
+        ".L3"
+      ],
+      "width_bits": "runtime",
+      "uops": [
+        {
+          "kind": "branch",
+          "category": "control",
+          "execution_class": "branch",
+          "source_line": 61
+        }
+      ]
+    },
+    {
+      "index": 50,
+      "source_line": 63,
+      "mnemonic": "ret",
+      "form": "any",
+      "operands": [],
+      "width_bits": "runtime",
+      "uops": [
+        {
+          "kind": "return",
+          "category": "control",
+          "execution_class": "branch",
+          "source_line": 63
+        }
+      ]
+    }
+  ],
+  "uops": [
+    {
+      "kind": "scalar_move",
+      "category": "scalar",
+      "execution_class": "scalar_alu",
+      "source_line": 11
+    },
+    {
+      "kind": "vector_config",
+      "category": "vector_control",
+      "execution_class": "vector_config",
+      "source_line": 12
+    },
+    {
+      "kind": "vector_move",
+      "category": "vector_move",
+      "execution_class": "vector_fp",
+      "source_line": 13
+    },
+    {
+      "kind": "branch",
+      "category": "control",
+      "execution_class": "branch",
+      "source_line": 14
+    },
+    {
+      "kind": "scalar_move",
+      "category": "scalar",
+      "execution_class": "scalar_alu",
+      "source_line": 15
+    },
+    {
+      "kind": "scalar_load",
+      "category": "scalar_memory",
+      "execution_class": "load_data",
+      "source_line": 16
+    },
+    {
+      "kind": "scalar_move",
+      "category": "scalar",
+      "execution_class": "scalar_alu",
+      "source_line": 17
+    },
+    {
+      "kind": "scalar_load",
+      "category": "scalar_memory",
+      "execution_class": "load_data",
+      "source_line": 18
+    },
+    {
+      "kind": "scalar_move",
+      "category": "scalar",
+      "execution_class": "scalar_alu",
+      "source_line": 19
+    },
+    {
+      "kind": "vector_broadcast",
+      "category": "vector_move",
+      "execution_class": "vector_fp",
+      "source_line": 20
+    },
+    {
+      "kind": "scalar_alu",
+      "category": "scalar",
+      "execution_class": "scalar_alu",
+      "source_line": 22
+    },
+    {
+      "kind": "scalar_alu",
+      "category": "scalar",
+      "execution_class": "scalar_alu",
+      "source_line": 23
+    },
+    {
+      "kind": "address_generation",
+      "category": "memory",
+      "execution_class": "address_generation",
+      "source_line": 24
+    },
+    {
+      "kind": "vector_load",
+      "category": "vector_memory",
+      "execution_class": "load_data",
+      "source_line": 24
+    },
+    {
+      "kind": "vector_fp_add",
+      "category": "vector_compute",
+      "execution_class": "vector_fp",
+      "source_line": 25
+    },
+    {
+      "kind": "vector_move",
+      "category": "vector_move",
+      "execution_class": "vector_fp",
+      "source_line": 26
+    },
+    {
+      "kind": "vector_fp_fma",
+      "category": "vector_compute",
+      "execution_class": "vector_fp",
+      "source_line": 27
+    },
+    {
+      "kind": "vector_move",
+      "category": "vector_move",
+      "execution_class": "vector_fp",
+      "source_line": 28
+    },
+    {
+      "kind": "vector_fp_fma",
+      "category": "vector_compute",
+      "execution_class": "vector_fp",
+      "source_line": 29
+    },
+    {
+      "kind": "vector_move",
+      "category": "vector_move",
+      "execution_class": "vector_fp",
+      "source_line": 30
+    },
+    {
+      "kind": "vector_fp_fma",
+      "category": "vector_compute",
+      "execution_class": "vector_fp",
+      "source_line": 31
+    },
+    {
+      "kind": "vector_move",
+      "category": "vector_move",
+      "execution_class": "vector_fp",
+      "source_line": 32
+    },
+    {
+      "kind": "vector_fp_fma",
+      "category": "vector_compute",
+      "execution_class": "vector_fp",
+      "source_line": 33
+    },
+    {
+      "kind": "vector_move",
+      "category": "vector_move",
+      "execution_class": "vector_fp",
+      "source_line": 34
+    },
+    {
+      "kind": "vector_fp_fma",
+      "category": "vector_compute",
+      "execution_class": "vector_fp",
+      "source_line": 35
+    },
+    {
+      "kind": "vector_move",
+      "category": "vector_move",
+      "execution_class": "vector_fp",
+      "source_line": 36
+    },
+    {
+      "kind": "vector_fp_fma",
+      "category": "vector_compute",
+      "execution_class": "vector_fp",
+      "source_line": 37
+    },
+    {
+      "kind": "vector_move",
+      "category": "vector_move",
+      "execution_class": "vector_fp",
+      "source_line": 38
+    },
+    {
+      "kind": "vector_fp_fma",
+      "category": "vector_compute",
+      "execution_class": "vector_fp",
+      "source_line": 39
+    },
+    {
+      "kind": "vector_move",
+      "category": "vector_move",
+      "execution_class": "vector_fp",
+      "source_line": 40
+    },
+    {
+      "kind": "vector_fp_fma",
+      "category": "vector_compute",
+      "execution_class": "vector_fp",
+      "source_line": 41
+    },
+    {
+      "kind": "vector_move",
+      "category": "vector_move",
+      "execution_class": "vector_fp",
+      "source_line": 42
+    },
+    {
+      "kind": "vector_fp_fma",
+      "category": "vector_compute",
+      "execution_class": "vector_fp",
+      "source_line": 43
+    },
+    {
+      "kind": "vector_move",
+      "category": "vector_move",
+      "execution_class": "vector_fp",
+      "source_line": 44
+    },
+    {
+      "kind": "vector_fp_fma",
+      "category": "vector_compute",
+      "execution_class": "vector_fp",
+      "source_line": 45
+    },
+    {
+      "kind": "vector_move",
+      "category": "vector_move",
+      "execution_class": "vector_fp",
+      "source_line": 46
+    },
+    {
+      "kind": "vector_fp_fma",
+      "category": "vector_compute",
+      "execution_class": "vector_fp",
+      "source_line": 47
+    },
+    {
+      "kind": "vector_move",
+      "category": "vector_move",
+      "execution_class": "vector_fp",
+      "source_line": 48
+    },
+    {
+      "kind": "vector_fp_fma",
+      "category": "vector_compute",
+      "execution_class": "vector_fp",
+      "source_line": 49
+    },
+    {
+      "kind": "scalar_alu",
+      "category": "scalar",
+      "execution_class": "scalar_alu",
+      "source_line": 50
+    },
+    {
+      "kind": "vector_move",
+      "category": "vector_move",
+      "execution_class": "vector_fp",
+      "source_line": 51
+    },
+    {
+      "kind": "vector_fp_fma",
+      "category": "vector_compute",
+      "execution_class": "vector_fp",
+      "source_line": 52
+    },
+    {
+      "kind": "vector_move",
+      "category": "vector_move",
+      "execution_class": "vector_fp",
+      "source_line": 53
+    },
+    {
+      "kind": "vector_fp_fma",
+      "category": "vector_compute",
+      "execution_class": "vector_fp",
+      "source_line": 54
+    },
+    {
+      "kind": "scalar_alu",
+      "category": "scalar",
+      "execution_class": "scalar_alu",
+      "source_line": 55
+    },
+    {
+      "kind": "vector_move",
+      "category": "vector_move",
+      "execution_class": "vector_fp",
+      "source_line": 56
+    },
+    {
+      "kind": "vector_fp_fma",
+      "category": "vector_compute",
+      "execution_class": "vector_fp",
+      "source_line": 57
+    },
+    {
+      "kind": "vector_move",
+      "category": "vector_move",
+      "execution_class": "vector_fp",
+      "source_line": 58
+    },
+    {
+      "kind": "vector_fp_fma",
+      "category": "vector_compute",
+      "execution_class": "vector_fp",
+      "source_line": 59
+    },
+    {
+      "kind": "address_generation",
+      "category": "memory",
+      "execution_class": "address_generation",
+      "source_line": 60
+    },
+    {
+      "kind": "vector_store",
+      "category": "vector_memory",
+      "execution_class": "store_data",
+      "source_line": 60
+    },
+    {
+      "kind": "branch",
+      "category": "control",
+      "execution_class": "branch",
+      "source_line": 61
+    },
+    {
+      "kind": "return",
+      "category": "control",
+      "execution_class": "branch",
+      "source_line": 63
+    }
+  ],
+  "vector_state_final": {
+    "sew_bits": 32,
+    "lmul": "m4",
+    "vl": "runtime",
+    "vl_operand": "a5",
+    "tail_policy": "ta",
+    "mask_policy": "ma"
+  },
+  "statistics": {
+    "instruction_count": 51,
+    "uop_count": 53,
+    "instructions_by_mnemonic": {
+      "add": 3,
+      "beq": 1,
+      "bgtu": 1,
+      "flw": 2,
+      "li": 2,
+      "lui": 2,
+      "ret": 1,
+      "slli": 1,
+      "vfadd.vv": 1,
+      "vfmacc.vf": 16,
+      "vfmv.v.f": 1,
+      "vle32.v": 1,
+      "vmv.v.i": 1,
+      "vmv.v.v": 16,
+      "vse32.v": 1,
+      "vsetvli": 1
+    },
+    "uops_by_kind": {
+      "address_generation": 2,
+      "branch": 2,
+      "return": 1,
+      "scalar_alu": 4,
+      "scalar_load": 2,
+      "scalar_move": 4,
+      "vector_broadcast": 1,
+      "vector_config": 1,
+      "vector_fp_add": 1,
+      "vector_fp_fma": 16,
+      "vector_load": 1,
+      "vector_move": 17,
+      "vector_store": 1
+    }
+  }
+}

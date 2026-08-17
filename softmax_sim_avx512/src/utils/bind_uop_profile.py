@@ -9,6 +9,7 @@ visible instead of being filled with a default.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import sys
 from pathlib import Path
@@ -147,6 +148,9 @@ def main() -> int:
         trace = json.loads(args.trace.read_text(encoding="utf-8"))
         profile = load_yaml(args.profile)
         result = bind_trace(trace, profile)
+        result["profile_sha256"] = hashlib.sha256(
+            args.profile.read_bytes()
+        ).hexdigest()
     except (OSError, ValueError, KeyError, json.JSONDecodeError) as error:
         print(f"bind_uop_profile: error: {error}", file=sys.stderr)
         return 2

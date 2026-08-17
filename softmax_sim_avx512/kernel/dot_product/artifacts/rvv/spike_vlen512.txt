@@ -1,0 +1,5 @@
+kernel=dot_product n=16 max_abs=0 PASS
+kernel=dot_product n=32 max_abs=7.62939e-06 PASS
+kernel=dot_product n=64 max_abs=1.33514e-05 PASS
+kernel=dot_product n=256 max_abs=0.000144958 PASS
+kernel=dot_product n=4096 max_abs=0.00050354 PASS

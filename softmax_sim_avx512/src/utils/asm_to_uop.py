@@ -9,6 +9,7 @@ compiler changes from the simulator calibration workflow.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 import sys
@@ -231,6 +232,13 @@ def build_trace(
         "assembly": str(assembly),
         "function": function,
         "input_mode": "assembly_only",
+        "provenance": {
+            "assembly_sha256": hashlib.sha256(assembly.read_bytes()).hexdigest(),
+            "recipe_sha256": hashlib.sha256(recipe_path.read_bytes()).hexdigest(),
+            "uop_catalog_sha256": hashlib.sha256(
+                catalog_path.read_bytes()
+            ).hexdigest(),
+        },
         "instructions": instructions,
         "uops": flat_uops,
         "vector_state_final": (

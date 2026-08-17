@@ -21,7 +21,9 @@ from src.simulator.profile import ProfileError, load_profile
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Generic-uop softmax cycle simulator")
+    parser = argparse.ArgumentParser(
+        description="Semantic-uop AVX-512 kernel cycle simulator"
+    )
     parser.add_argument("--isa", choices=("x86",), default="x86")
     parser.add_argument("--assembly", type=Path, required=True)
     parser.add_argument("--function", default="softmax_avx512_f32")

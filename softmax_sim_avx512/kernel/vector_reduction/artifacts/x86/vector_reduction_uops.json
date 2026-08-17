@@ -1,0 +1,1032 @@
+{
+  "trace_version": 1,
+  "isa": "x86",
+  "assembly": "kernel/vector_reduction/artifacts/x86/vector_reduction_avx512.s",
+  "function": "vector_reduction_avx512_f32",
+  "input_mode": "assembly_only",
+  "provenance": {
+    "assembly_sha256": "8f49edee8d838131ab7df7114846ee430ac7ec14d05f29d0d041bf2d4620acad",
+    "recipe_sha256": "75f021308eb45f536707b6678996fc4f701102a1fd1a909a08d7da036cc4ead9",
+    "uop_catalog_sha256": "dbfa44215a3d751980ca9a5456e1d2d0526ee8e1959b2b0ccc8ef7f6e8079c42"
+  },
+  "instructions": [
+    {
+      "index": 0,
+      "source_line": 7,
+      "mnemonic": "testq",
+      "form": "register",
+      "operands": [
+        "%rdx",
+        "%rdx"
+      ],
+      "width_bits": 32,
+      "uops": [
+        {
+          "kind": "scalar_alu",
+          "category": "scalar",
+          "execution_class": "scalar_alu",
+          "source_line": 7
+        }
+      ]
+    },
+    {
+      "index": 1,
+      "source_line": 8,
+      "mnemonic": "je",
+      "form": "register",
+      "operands": [
+        ".L4"
+      ],
+      "width_bits": 32,
+      "uops": [
+        {
+          "kind": "branch",
+          "category": "control",
+          "execution_class": "branch",
+          "source_line": 8
+        }
+      ]
+    },
+    {
+      "index": 2,
+      "source_line": 9,
+      "mnemonic": "vbroadcastss",
+      "form": "memory_load",
+      "operands": [
+        ".LC1(%rip)",
+        "%zmm0"
+      ],
+      "width_bits": 512,
+      "uops": [
+        {
+          "kind": "address_generation",
+          "category": "memory",
+          "execution_class": "address_generation",
+          "source_line": 9
+        },
+        {
+          "kind": "vector_load",
+          "category": "vector_memory",
+          "execution_class": "load_data",
+          "source_line": 9
+        },
+        {
+          "kind": "vector_broadcast",
+          "category": "vector_move",
+          "execution_class": "vector_fp",
+          "source_line": 9
+        }
+      ]
+    },
+    {
+      "index": 3,
+      "source_line": 10,
+      "mnemonic": "xorl",
+      "form": "register",
+      "operands": [
+        "%eax",
+        "%eax"
+      ],
+      "width_bits": 32,
+      "uops": [
+        {
+          "kind": "scalar_alu",
+          "category": "scalar",
+          "execution_class": "scalar_alu",
+          "source_line": 10
+        }
+      ]
+    },
+    {
+      "index": 4,
+      "source_line": 11,
+      "mnemonic": "vxorps",
+      "form": "register",
+      "operands": [
+        "%xmm1",
+        "%xmm1",
+        "%xmm1"
+      ],
+      "width_bits": 128,
+      "uops": [
+        {
+          "kind": "vector_move",
+          "category": "vector_move",
+          "execution_class": "vector_fp",
+          "source_line": 11
+        }
+      ]
+    },
+    {
+      "index": 5,
+      "source_line": 15,
+      "mnemonic": "vaddps",
+      "form": "memory_load",
+      "operands": [
+        "(%rdi,%rax,4)",
+        "%zmm1",
+        "%zmm1"
+      ],
+      "width_bits": 512,
+      "uops": [
+        {
+          "kind": "address_generation",
+          "category": "memory",
+          "execution_class": "address_generation",
+          "source_line": 15
+        },
+        {
+          "kind": "vector_load",
+          "category": "vector_memory",
+          "execution_class": "load_data",
+          "source_line": 15
+        },
+        {
+          "kind": "vector_fp_add",
+          "category": "vector_compute",
+          "execution_class": "vector_fp",
+          "source_line": 15
+        }
+      ]
+    },
+    {
+      "index": 6,
+      "source_line": 16,
+      "mnemonic": "vmaxps",
+      "form": "memory_load",
+      "operands": [
+        "(%rdi,%rax,4)",
+        "%zmm0",
+        "%zmm0"
+      ],
+      "width_bits": 512,
+      "uops": [
+        {
+          "kind": "address_generation",
+          "category": "memory",
+          "execution_class": "address_generation",
+          "source_line": 16
+        },
+        {
+          "kind": "vector_load",
+          "category": "vector_memory",
+          "execution_class": "load_data",
+          "source_line": 16
+        },
+        {
+          "kind": "vector_fp_max",
+          "category": "vector_compute",
+          "execution_class": "vector_fp",
+          "source_line": 16
+        }
+      ]
+    },
+    {
+      "index": 7,
+      "source_line": 17,
+      "mnemonic": "addq",
+      "form": "register",
+      "operands": [
+        "$16",
+        "%rax"
+      ],
+      "width_bits": 32,
+      "uops": [
+        {
+          "kind": "scalar_alu",
+          "category": "scalar",
+          "execution_class": "scalar_alu",
+          "source_line": 17
+        }
+      ]
+    },
+    {
+      "index": 8,
+      "source_line": 18,
+      "mnemonic": "cmpq",
+      "form": "register",
+      "operands": [
+        "%rdx",
+        "%rax"
+      ],
+      "width_bits": 32,
+      "uops": [
+        {
+          "kind": "scalar_alu",
+          "category": "scalar",
+          "execution_class": "scalar_alu",
+          "source_line": 18
+        }
+      ]
+    },
+    {
+      "index": 9,
+      "source_line": 19,
+      "mnemonic": "jb",
+      "form": "register",
+      "operands": [
+        ".L3"
+      ],
+      "width_bits": 32,
+      "uops": [
+        {
+          "kind": "branch",
+          "category": "control",
+          "execution_class": "branch",
+          "source_line": 19
+        }
+      ]
+    },
+    {
+      "index": 10,
+      "source_line": 21,
+      "mnemonic": "vextractf64x4",
+      "form": "register",
+      "operands": [
+        "$0x1",
+        "%zmm1",
+        "%ymm2"
+      ],
+      "width_bits": 512,
+      "uops": [
+        {
+          "kind": "vector_shuffle",
+          "category": "vector_permutation",
+          "execution_class": "shuffle",
+          "source_line": 21
+        }
+      ]
+    },
+    {
+      "index": 11,
+      "source_line": 22,
+      "mnemonic": "vaddps",
+      "form": "register",
+      "operands": [
+        "%ymm1",
+        "%ymm2",
+        "%ymm1"
+      ],
+      "width_bits": 256,
+      "uops": [
+        {
+          "kind": "vector_fp_add",
+          "category": "vector_compute",
+          "execution_class": "vector_fp",
+          "source_line": 22
+        }
+      ]
+    },
+    {
+      "index": 12,
+      "source_line": 23,
+      "mnemonic": "vextractf128",
+      "form": "register",
+      "operands": [
+        "$0x1",
+        "%ymm1",
+        "%xmm2"
+      ],
+      "width_bits": 256,
+      "uops": [
+        {
+          "kind": "vector_shuffle",
+          "category": "vector_permutation",
+          "execution_class": "shuffle",
+          "source_line": 23
+        }
+      ]
+    },
+    {
+      "index": 13,
+      "source_line": 24,
+      "mnemonic": "vaddps",
+      "form": "register",
+      "operands": [
+        "%xmm1",
+        "%xmm2",
+        "%xmm2"
+      ],
+      "width_bits": 128,
+      "uops": [
+        {
+          "kind": "vector_fp_add",
+          "category": "vector_compute",
+          "execution_class": "vector_fp",
+          "source_line": 24
+        }
+      ]
+    },
+    {
+      "index": 14,
+      "source_line": 25,
+      "mnemonic": "vpermilps",
+      "form": "register",
+      "operands": [
+        "$78",
+        "%xmm2",
+        "%xmm1"
+      ],
+      "width_bits": 128,
+      "uops": [
+        {
+          "kind": "vector_shuffle",
+          "category": "vector_permutation",
+          "execution_class": "shuffle",
+          "source_line": 25
+        }
+      ]
+    },
+    {
+      "index": 15,
+      "source_line": 26,
+      "mnemonic": "vaddps",
+      "form": "register",
+      "operands": [
+        "%xmm2",
+        "%xmm1",
+        "%xmm1"
+      ],
+      "width_bits": 128,
+      "uops": [
+        {
+          "kind": "vector_fp_add",
+          "category": "vector_compute",
+          "execution_class": "vector_fp",
+          "source_line": 26
+        }
+      ]
+    },
+    {
+      "index": 16,
+      "source_line": 27,
+      "mnemonic": "vextractf64x4",
+      "form": "register",
+      "operands": [
+        "$0x1",
+        "%zmm0",
+        "%ymm2"
+      ],
+      "width_bits": 512,
+      "uops": [
+        {
+          "kind": "vector_shuffle",
+          "category": "vector_permutation",
+          "execution_class": "shuffle",
+          "source_line": 27
+        }
+      ]
+    },
+    {
+      "index": 17,
+      "source_line": 28,
+      "mnemonic": "vmaxps",
+      "form": "register",
+      "operands": [
+        "%ymm0",
+        "%ymm2",
+        "%ymm2"
+      ],
+      "width_bits": 256,
+      "uops": [
+        {
+          "kind": "vector_fp_max",
+          "category": "vector_compute",
+          "execution_class": "vector_fp",
+          "source_line": 28
+        }
+      ]
+    },
+    {
+      "index": 18,
+      "source_line": 29,
+      "mnemonic": "vextractf128",
+      "form": "register",
+      "operands": [
+        "$0x1",
+        "%ymm2",
+        "%xmm0"
+      ],
+      "width_bits": 256,
+      "uops": [
+        {
+          "kind": "vector_shuffle",
+          "category": "vector_permutation",
+          "execution_class": "shuffle",
+          "source_line": 29
+        }
+      ]
+    },
+    {
+      "index": 19,
+      "source_line": 30,
+      "mnemonic": "vmaxps",
+      "form": "register",
+      "operands": [
+        "%xmm2",
+        "%xmm0",
+        "%xmm0"
+      ],
+      "width_bits": 128,
+      "uops": [
+        {
+          "kind": "vector_fp_max",
+          "category": "vector_compute",
+          "execution_class": "vector_fp",
+          "source_line": 30
+        }
+      ]
+    },
+    {
+      "index": 20,
+      "source_line": 31,
+      "mnemonic": "vpermilps",
+      "form": "register",
+      "operands": [
+        "$78",
+        "%xmm0",
+        "%xmm2"
+      ],
+      "width_bits": 128,
+      "uops": [
+        {
+          "kind": "vector_shuffle",
+          "category": "vector_permutation",
+          "execution_class": "shuffle",
+          "source_line": 31
+        }
+      ]
+    },
+    {
+      "index": 21,
+      "source_line": 32,
+      "mnemonic": "vmaxps",
+      "form": "register",
+      "operands": [
+        "%xmm2",
+        "%xmm0",
+        "%xmm0"
+      ],
+      "width_bits": 128,
+      "uops": [
+        {
+          "kind": "vector_fp_max",
+          "category": "vector_compute",
+          "execution_class": "vector_fp",
+          "source_line": 32
+        }
+      ]
+    },
+    {
+      "index": 22,
+      "source_line": 33,
+      "mnemonic": "vpermilps",
+      "form": "register",
+      "operands": [
+        "$17",
+        "%xmm0",
+        "%xmm2"
+      ],
+      "width_bits": 128,
+      "uops": [
+        {
+          "kind": "vector_shuffle",
+          "category": "vector_permutation",
+          "execution_class": "shuffle",
+          "source_line": 33
+        }
+      ]
+    },
+    {
+      "index": 23,
+      "source_line": 34,
+      "mnemonic": "vmaxps",
+      "form": "register",
+      "operands": [
+        "%xmm2",
+        "%xmm0",
+        "%xmm0"
+      ],
+      "width_bits": 128,
+      "uops": [
+        {
+          "kind": "vector_fp_max",
+          "category": "vector_compute",
+          "execution_class": "vector_fp",
+          "source_line": 34
+        }
+      ]
+    },
+    {
+      "index": 24,
+      "source_line": 35,
+      "mnemonic": "vmovaps",
+      "form": "register",
+      "operands": [
+        "%xmm1",
+        "%xmm2"
+      ],
+      "width_bits": 128,
+      "uops": [
+        {
+          "kind": "vector_move",
+          "category": "vector_move",
+          "execution_class": "vector_fp",
+          "source_line": 35
+        }
+      ]
+    },
+    {
+      "index": 25,
+      "source_line": 36,
+      "mnemonic": "vshufps",
+      "form": "register",
+      "operands": [
+        "$85",
+        "%xmm1",
+        "%xmm1",
+        "%xmm1"
+      ],
+      "width_bits": 128,
+      "uops": [
+        {
+          "kind": "vector_shuffle",
+          "category": "vector_permutation",
+          "execution_class": "shuffle",
+          "source_line": 36
+        }
+      ]
+    },
+    {
+      "index": 26,
+      "source_line": 37,
+      "mnemonic": "vaddss",
+      "form": "register",
+      "operands": [
+        "%xmm1",
+        "%xmm2",
+        "%xmm2"
+      ],
+      "width_bits": 128,
+      "uops": [
+        {
+          "kind": "scalar_fp_add",
+          "category": "scalar_compute",
+          "execution_class": "scalar_fp",
+          "source_line": 37
+        }
+      ]
+    },
+    {
+      "index": 27,
+      "source_line": 38,
+      "mnemonic": "vunpcklps",
+      "form": "register",
+      "operands": [
+        "%xmm0",
+        "%xmm2",
+        "%xmm0"
+      ],
+      "width_bits": 128,
+      "uops": [
+        {
+          "kind": "vector_shuffle",
+          "category": "vector_permutation",
+          "execution_class": "shuffle",
+          "source_line": 38
+        }
+      ]
+    },
+    {
+      "index": 28,
+      "source_line": 39,
+      "mnemonic": "vmovlps",
+      "form": "memory_store",
+      "operands": [
+        "%xmm0",
+        "(%rsi)"
+      ],
+      "width_bits": 128,
+      "uops": [
+        {
+          "kind": "address_generation",
+          "category": "memory",
+          "execution_class": "address_generation",
+          "source_line": 39
+        },
+        {
+          "kind": "vector_store",
+          "category": "vector_memory",
+          "execution_class": "store_data",
+          "source_line": 39
+        }
+      ]
+    },
+    {
+      "index": 29,
+      "source_line": 40,
+      "mnemonic": "vzeroupper",
+      "form": "register",
+      "operands": [],
+      "width_bits": 32,
+      "uops": [
+        {
+          "kind": "vector_config",
+          "category": "vector_control",
+          "execution_class": "vector_config",
+          "source_line": 40
+        }
+      ]
+    },
+    {
+      "index": 30,
+      "source_line": 41,
+      "mnemonic": "ret",
+      "form": "register",
+      "operands": [],
+      "width_bits": 32,
+      "uops": [
+        {
+          "kind": "return",
+          "category": "control",
+          "execution_class": "branch",
+          "source_line": 41
+        }
+      ]
+    },
+    {
+      "index": 31,
+      "source_line": 45,
+      "mnemonic": "vbroadcastsd",
+      "form": "memory_load",
+      "operands": [
+        ".LC3(%rip)",
+        "%zmm0"
+      ],
+      "width_bits": 512,
+      "uops": [
+        {
+          "kind": "address_generation",
+          "category": "memory",
+          "execution_class": "address_generation",
+          "source_line": 45
+        },
+        {
+          "kind": "vector_load",
+          "category": "vector_memory",
+          "execution_class": "load_data",
+          "source_line": 45
+        },
+        {
+          "kind": "vector_broadcast",
+          "category": "vector_move",
+          "execution_class": "vector_fp",
+          "source_line": 45
+        }
+      ]
+    },
+    {
+      "index": 32,
+      "source_line": 46,
+      "mnemonic": "vxorpd",
+      "form": "register",
+      "operands": [
+        "%xmm1",
+        "%xmm1",
+        "%xmm1"
+      ],
+      "width_bits": 128,
+      "uops": [
+        {
+          "kind": "vector_move",
+          "category": "vector_move",
+          "execution_class": "vector_fp",
+          "source_line": 46
+        }
+      ]
+    },
+    {
+      "index": 33,
+      "source_line": 47,
+      "mnemonic": "jmp",
+      "form": "register",
+      "operands": [
+        ".L2"
+      ],
+      "width_bits": 32,
+      "uops": [
+        {
+          "kind": "branch",
+          "category": "control",
+          "execution_class": "branch",
+          "source_line": 47
+        }
+      ]
+    }
+  ],
+  "uops": [
+    {
+      "kind": "scalar_alu",
+      "category": "scalar",
+      "execution_class": "scalar_alu",
+      "source_line": 7
+    },
+    {
+      "kind": "branch",
+      "category": "control",
+      "execution_class": "branch",
+      "source_line": 8
+    },
+    {
+      "kind": "address_generation",
+      "category": "memory",
+      "execution_class": "address_generation",
+      "source_line": 9
+    },
+    {
+      "kind": "vector_load",
+      "category": "vector_memory",
+      "execution_class": "load_data",
+      "source_line": 9
+    },
+    {
+      "kind": "vector_broadcast",
+      "category": "vector_move",
+      "execution_class": "vector_fp",
+      "source_line": 9
+    },
+    {
+      "kind": "scalar_alu",
+      "category": "scalar",
+      "execution_class": "scalar_alu",
+      "source_line": 10
+    },
+    {
+      "kind": "vector_move",
+      "category": "vector_move",
+      "execution_class": "vector_fp",
+      "source_line": 11
+    },
+    {
+      "kind": "address_generation",
+      "category": "memory",
+      "execution_class": "address_generation",
+      "source_line": 15
+    },
+    {
+      "kind": "vector_load",
+      "category": "vector_memory",
+      "execution_class": "load_data",
+      "source_line": 15
+    },
+    {
+      "kind": "vector_fp_add",
+      "category": "vector_compute",
+      "execution_class": "vector_fp",
+      "source_line": 15
+    },
+    {
+      "kind": "address_generation",
+      "category": "memory",
+      "execution_class": "address_generation",
+      "source_line": 16
+    },
+    {
+      "kind": "vector_load",
+      "category": "vector_memory",
+      "execution_class": "load_data",
+      "source_line": 16
+    },
+    {
+      "kind": "vector_fp_max",
+      "category": "vector_compute",
+      "execution_class": "vector_fp",
+      "source_line": 16
+    },
+    {
+      "kind": "scalar_alu",
+      "category": "scalar",
+      "execution_class": "scalar_alu",
+      "source_line": 17
+    },
+    {
+      "kind": "scalar_alu",
+      "category": "scalar",
+      "execution_class": "scalar_alu",
+      "source_line": 18
+    },
+    {
+      "kind": "branch",
+      "category": "control",
+      "execution_class": "branch",
+      "source_line": 19
+    },
+    {
+      "kind": "vector_shuffle",
+      "category": "vector_permutation",
+      "execution_class": "shuffle",
+      "source_line": 21
+    },
+    {
+      "kind": "vector_fp_add",
+      "category": "vector_compute",
+      "execution_class": "vector_fp",
+      "source_line": 22
+    },
+    {
+      "kind": "vector_shuffle",
+      "category": "vector_permutation",
+      "execution_class": "shuffle",
+      "source_line": 23
+    },
+    {
+      "kind": "vector_fp_add",
+      "category": "vector_compute",
+      "execution_class": "vector_fp",
+      "source_line": 24
+    },
+    {
+      "kind": "vector_shuffle",
+      "category": "vector_permutation",
+      "execution_class": "shuffle",
+      "source_line": 25
+    },
+    {
+      "kind": "vector_fp_add",
+      "category": "vector_compute",
+      "execution_class": "vector_fp",
+      "source_line": 26
+    },
+    {
+      "kind": "vector_shuffle",
+      "category": "vector_permutation",
+      "execution_class": "shuffle",
+      "source_line": 27
+    },
+    {
+      "kind": "vector_fp_max",
+      "category": "vector_compute",
+      "execution_class": "vector_fp",
+      "source_line": 28
+    },
+    {
+      "kind": "vector_shuffle",
+      "category": "vector_permutation",
+      "execution_class": "shuffle",
+      "source_line": 29
+    },
+    {
+      "kind": "vector_fp_max",
+      "category": "vector_compute",
+      "execution_class": "vector_fp",
+      "source_line": 30
+    },
+    {
+      "kind": "vector_shuffle",
+      "category": "vector_permutation",
+      "execution_class": "shuffle",
+      "source_line": 31
+    },
+    {
+      "kind": "vector_fp_max",
+      "category": "vector_compute",
+      "execution_class": "vector_fp",
+      "source_line": 32
+    },
+    {
+      "kind": "vector_shuffle",
+      "category": "vector_permutation",
+      "execution_class": "shuffle",
+      "source_line": 33
+    },
+    {
+      "kind": "vector_fp_max",
+      "category": "vector_compute",
+      "execution_class": "vector_fp",
+      "source_line": 34
+    },
+    {
+      "kind": "vector_move",
+      "category": "vector_move",
+      "execution_class": "vector_fp",
+      "source_line": 35
+    },
+    {
+      "kind": "vector_shuffle",
+      "category": "vector_permutation",
+      "execution_class": "shuffle",
+      "source_line": 36
+    },
+    {
+      "kind": "scalar_fp_add",
+      "category": "scalar_compute",
+      "execution_class": "scalar_fp",
+      "source_line": 37
+    },
+    {
+      "kind": "vector_shuffle",
+      "category": "vector_permutation",
+      "execution_class": "shuffle",
+      "source_line": 38
+    },
+    {
+      "kind": "address_generation",
+      "category": "memory",
+      "execution_class": "address_generation",
+      "source_line": 39
+    },
+    {
+      "kind": "vector_store",
+      "category": "vector_memory",
+      "execution_class": "store_data",
+      "source_line": 39
+    },
+    {
+      "kind": "vector_config",
+      "category": "vector_control",
+      "execution_class": "vector_config",
+      "source_line": 40
+    },
+    {
+      "kind": "return",
+      "category": "control",
+      "execution_class": "branch",
+      "source_line": 41
+    },
+    {
+      "kind": "address_generation",
+      "category": "memory",
+      "execution_class": "address_generation",
+      "source_line": 45
+    },
+    {
+      "kind": "vector_load",
+      "category": "vector_memory",
+      "execution_class": "load_data",
+      "source_line": 45
+    },
+    {
+      "kind": "vector_broadcast",
+      "category": "vector_move",
+      "execution_class": "vector_fp",
+      "source_line": 45
+    },
+    {
+      "kind": "vector_move",
+      "category": "vector_move",
+      "execution_class": "vector_fp",
+      "source_line": 46
+    },
+    {
+      "kind": "branch",
+      "category": "control",
+      "execution_class": "branch",
+      "source_line": 47
+    }
+  ],
+  "vector_state_final": null,
+  "statistics": {
+    "instruction_count": 34,
+    "uop_count": 43,
+    "instructions_by_mnemonic": {
+      "addq": 1,
+      "cmpq": 1,
+      "jb": 1,
+      "je": 1,
+      "jmp": 1,
+      "ret": 1,
+      "testq": 1,
+      "vaddps": 4,
+      "vaddss": 1,
+      "vbroadcastsd": 1,
+      "vbroadcastss": 1,
+      "vextractf128": 2,
+      "vextractf64x4": 2,
+      "vmaxps": 5,
+      "vmovaps": 1,
+      "vmovlps": 1,
+      "vpermilps": 3,
+      "vshufps": 1,
+      "vunpcklps": 1,
+      "vxorpd": 1,
+      "vxorps": 1,
+      "vzeroupper": 1,
+      "xorl": 1
+    },
+    "uops_by_kind": {
+      "address_generation": 5,
+      "branch": 3,
+      "return": 1,
+      "scalar_alu": 4,
+      "scalar_fp_add": 1,
+      "vector_broadcast": 2,
+      "vector_config": 1,
+      "vector_fp_add": 4,
+      "vector_fp_max": 5,
+      "vector_load": 4,
+      "vector_move": 3,
+      "vector_shuffle": 9,
+      "vector_store": 1
+    }
+  }
+}

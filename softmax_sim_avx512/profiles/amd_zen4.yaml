@@ -153,6 +153,26 @@ recipes:
         resource_occupancy_cycles: 2
         depends_on: [agu]
     evidence: [local-profile-benchmark, llvm-znver4-scheduling-model]
+  "vmovdqu64:zmm,memory":
+    required_features: [avx512f]
+    decoded_macro_ops: 1
+    retire_macro_ops: 1
+    uops:
+      - id: agu
+        kind: address_generation
+        latency_cycles: 0
+        issue_interval_cycles: 1
+        resource_choices: [address-generation]
+        resource_occupancy_cycles: 1
+      - id: store
+        kind: store_data
+        latency_cycles: 1
+        issue_interval_cycles: 1
+        resource_choices: [store-data]
+        resource_occupancy_cycles: 2
+        depends_on: [agu]
+    evidence: [equivalent-vmovups-store, llvm-znver4-scheduling-model]
+    notes: Same-width unaligned integer store modeled as the existing vmovups store.
   "vmovss:memory,xmm":
     required_features: [avx]
     decoded_macro_ops: 1
@@ -172,7 +192,53 @@ recipes:
         resource_occupancy_cycles: 1
         depends_on: [agu]
     evidence: [local-profile-benchmark, llvm-znver4-scheduling-model]
+  "vmovss:xmm,memory": &scalar_vector_store_recipe
+    required_features: [avx]
+    decoded_macro_ops: 1
+    retire_macro_ops: 1
+    uops:
+      - id: agu
+        kind: address_generation
+        latency_cycles: 0
+        issue_interval_cycles: 1
+        resource_choices: [address-generation]
+        resource_occupancy_cycles: 1
+      - id: store
+        kind: store_data
+        latency_cycles: 1
+        issue_interval_cycles: 1
+        resource_choices: [store-data]
+        resource_occupancy_cycles: 1
+        depends_on: [agu]
+    evidence: [llvm-znver4-scheduling-model]
+  "vmovlps:xmm,memory": *scalar_vector_store_recipe
   "vbroadcastss:memory,zmm":
+    required_features: [avx512f]
+    decoded_macro_ops: 1
+    retire_macro_ops: 1
+    uops:
+      - id: agu
+        kind: address_generation
+        latency_cycles: 0
+        issue_interval_cycles: 1
+        resource_choices: [address-generation]
+        resource_occupancy_cycles: 1
+      - id: load
+        kind: load_data
+        latency_cycles: 4
+        issue_interval_cycles: 0.5
+        resource_choices: [load-data]
+        resource_occupancy_cycles: 1
+        depends_on: [agu]
+      - id: broadcast
+        kind: vector_fp
+        latency_cycles: 2
+        issue_interval_cycles: 1
+        resource_choices: [vector-fp]
+        resource_occupancy_cycles: 1
+        depends_on: [load]
+    evidence: [llvm-znver4-scheduling-model]
+  "vbroadcastsd:memory,zmm":
     required_features: [avx512f]
     decoded_macro_ops: 1
     retire_macro_ops: 1
@@ -237,6 +303,7 @@ recipes:
     notes: LLVM models these eliminated register moves as zero latency.
   "vmovaps:xmm,xmm": *vector_move_recipe
   "vxorps:xmm,xmm,xmm": *vector_move_recipe
+  "vxorpd:xmm,xmm,xmm": *vector_move_recipe
   "vextractf64x4:immediate,zmm,ymm":
     required_features: [avx512dq]
     decoded_macro_ops: 1
@@ -274,6 +341,7 @@ recipes:
         resource_occupancy_cycles: 1
     evidence: [llvm-znver4-scheduling-model]
   "vshufps:immediate,xmm,xmm,xmm": *xmm_shuffle_recipe
+  "vunpcklps:xmm,xmm,xmm": *xmm_shuffle_recipe
   "vmaxps:xmm,xmm,xmm": &xmm_max_recipe
     required_features: [avx]
     decoded_macro_ops: 1
@@ -367,6 +435,47 @@ recipes:
         part_index: 1
     evidence: [local-profile-benchmark, amd-epyc-9004-whitepaper, llvm-znver4-scheduling-model]
   "vmulps:zmm,zmm,zmm": *zmm_fp_three_cycle_recipe
+  "vaddps:memory,zmm,zmm": &zmm_memory_fp_three_cycle_recipe
+    required_features: [avx512f]
+    decoded_macro_ops: 1
+    retire_macro_ops: 1
+    vector_decomposition: {parts: 2, part_width_bits: 256, part_issue_gap_cycles: 1}
+    uops:
+      - id: agu
+        kind: address_generation
+        latency_cycles: 0
+        issue_interval_cycles: 1
+        resource_choices: [address-generation]
+        resource_occupancy_cycles: 1
+      - id: load
+        kind: load_data
+        latency_cycles: 4
+        issue_interval_cycles: 0.5
+        resource_choices: [load-data]
+        resource_occupancy_cycles: 1
+        depends_on: [agu]
+      - id: fp-part-0
+        kind: vector_fp
+        latency_cycles: 3
+        issue_interval_cycles: 0.5
+        resource_choices: [vector-fp]
+        resource_occupancy_cycles: 1
+        issue_domains: [fp-add-fma-convert]
+        depends_on: [load]
+        part_index: 0
+      - id: fp-part-1
+        kind: vector_fp
+        latency_cycles: 3
+        issue_interval_cycles: 0.5
+        resource_choices: [vector-fp]
+        resource_occupancy_cycles: 1
+        issue_domains: [fp-add-fma-convert]
+        depends_on: [load]
+        part_index: 1
+    evidence: [provisional-equivalent-decomposition, llvm-znver4-scheduling-model]
+    notes: >-
+      Provisional memory-source decomposition derived from the existing load
+      and register vaddps models; this exact form was not locally calibrated.
   "vmulps:memory,zmm,zmm":
     required_features: [avx512f]
     decoded_macro_ops: 1
@@ -427,6 +536,51 @@ recipes:
         part_index: 1
     evidence: [local-profile-benchmark, amd-epyc-9004-whitepaper, llvm-znver4-scheduling-model]
   "vfnmadd132ps:zmm,zmm,zmm": *zmm_fma_recipe
+  "vfmadd213ps:zmm,zmm,zmm": *zmm_fma_recipe
+  "vfmadd231ps:zmm,zmm,zmm": *zmm_fma_recipe
+  "vfmadd132ps:memory,zmm,zmm": &zmm_memory_fma_recipe
+    required_features: [avx512f, fma]
+    decoded_macro_ops: 1
+    retire_macro_ops: 1
+    vector_decomposition: {parts: 2, part_width_bits: 256, part_issue_gap_cycles: 1}
+    uops:
+      - id: agu
+        kind: address_generation
+        latency_cycles: 0
+        issue_interval_cycles: 1
+        resource_choices: [address-generation]
+        resource_occupancy_cycles: 1
+      - id: load
+        kind: load_data
+        latency_cycles: 4
+        issue_interval_cycles: 0.5
+        resource_choices: [load-data]
+        resource_occupancy_cycles: 1
+        depends_on: [agu]
+      - id: fma-part-0
+        kind: vector_fp
+        latency_cycles: 4
+        issue_interval_cycles: 0.5
+        resource_choices: [vector-fp]
+        resource_occupancy_cycles: 1
+        issue_domains: [fp-add-fma-convert]
+        depends_on: [load]
+        part_index: 0
+      - id: fma-part-1
+        kind: vector_fp
+        latency_cycles: 4
+        issue_interval_cycles: 0.5
+        resource_choices: [vector-fp]
+        resource_occupancy_cycles: 1
+        issue_domains: [fp-add-fma-convert]
+        depends_on: [load]
+        part_index: 1
+    evidence: [provisional-equivalent-decomposition, llvm-znver4-scheduling-model]
+    notes: >-
+      Provisional memory-source decomposition derived from the existing load
+      and register FMA models; this exact form was not locally calibrated.
+  "vfmadd213ps:memory,zmm,zmm": *zmm_memory_fma_recipe
+  "vfmadd231ps:memory,zmm,zmm": *zmm_memory_fma_recipe
   "vcvttps2dq:zmm,zmm": &zmm_convert_four_cycle_recipe
     required_features: [avx512f]
     decoded_macro_ops: 1
@@ -450,6 +604,47 @@ recipes:
         issue_domains: [fp-add-fma-convert]
         part_index: 1
     evidence: [local-profile-benchmark, amd-epyc-9004-whitepaper, llvm-znver4-scheduling-model]
+  "vcvttps2dq:memory,zmm":
+    required_features: [avx512f]
+    decoded_macro_ops: 1
+    retire_macro_ops: 1
+    vector_decomposition: {parts: 2, part_width_bits: 256, part_issue_gap_cycles: 1}
+    uops:
+      - id: agu
+        kind: address_generation
+        latency_cycles: 0
+        issue_interval_cycles: 1
+        resource_choices: [address-generation]
+        resource_occupancy_cycles: 1
+      - id: load
+        kind: load_data
+        latency_cycles: 4
+        issue_interval_cycles: 0.5
+        resource_choices: [load-data]
+        resource_occupancy_cycles: 1
+        depends_on: [agu]
+      - id: convert-part-0
+        kind: conversion
+        latency_cycles: 4
+        issue_interval_cycles: 0.5
+        resource_choices: [conversion]
+        resource_occupancy_cycles: 1
+        issue_domains: [fp-add-fma-convert]
+        depends_on: [load]
+        part_index: 0
+      - id: convert-part-1
+        kind: conversion
+        latency_cycles: 4
+        issue_interval_cycles: 0.5
+        resource_choices: [conversion]
+        resource_occupancy_cycles: 1
+        issue_domains: [fp-add-fma-convert]
+        depends_on: [load]
+        part_index: 1
+    evidence: [provisional-equivalent-decomposition, llvm-znver4-scheduling-model]
+    notes: >-
+      Provisional memory-source decomposition derived from the existing load
+      and register conversion models; this exact form was not locally calibrated.
   "vcvtdq2ps:zmm,zmm":
     <<: *zmm_convert_four_cycle_recipe
     uops:
@@ -490,6 +685,45 @@ recipes:
         resource_occupancy_cycles: 1
         part_index: 1
     evidence: [local-profile-benchmark, amd-epyc-9004-whitepaper, llvm-znver4-scheduling-model]
+  "vpaddd:memory,zmm,zmm":
+    required_features: [avx512f]
+    decoded_macro_ops: 1
+    retire_macro_ops: 1
+    vector_decomposition: {parts: 2, part_width_bits: 256, part_issue_gap_cycles: 1}
+    uops:
+      - id: agu
+        kind: address_generation
+        latency_cycles: 0
+        issue_interval_cycles: 1
+        resource_choices: [address-generation]
+        resource_occupancy_cycles: 1
+      - id: load
+        kind: load_data
+        latency_cycles: 4
+        issue_interval_cycles: 0.5
+        resource_choices: [load-data]
+        resource_occupancy_cycles: 1
+        depends_on: [agu]
+      - id: integer-part-0
+        kind: vector_integer
+        latency_cycles: 1
+        issue_interval_cycles: 0.5
+        resource_choices: [vector-integer]
+        resource_occupancy_cycles: 1
+        depends_on: [load]
+        part_index: 0
+      - id: integer-part-1
+        kind: vector_integer
+        latency_cycles: 1
+        issue_interval_cycles: 0.5
+        resource_choices: [vector-integer]
+        resource_occupancy_cycles: 1
+        depends_on: [load]
+        part_index: 1
+    evidence: [provisional-equivalent-decomposition, llvm-znver4-scheduling-model]
+    notes: >-
+      Provisional memory-source decomposition derived from the existing load
+      and register integer models; this exact form was not locally calibrated.
   "vpslld:immediate,zmm,zmm": *zmm_integer_recipe
   "vaddps:ymm,ymm,ymm": &narrow_add_recipe
     required_features: [avx]

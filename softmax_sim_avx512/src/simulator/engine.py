@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import heapq
 import math
 from collections import Counter, deque
@@ -90,20 +91,23 @@ class Engine:
         if execution_model not in {"out_of_order", "in_order"}:
             raise SimulatorError(f"unknown execution model: {execution_model}")
         validate_bound_trace(trace)
-        self.trace = trace
+        # Timing and resource assignments are simulation state, not part of the
+        # reusable bound trace.  Keep each run isolated so callers can compare
+        # execution models without manually cloning the trace between runs.
+        self.trace = copy.deepcopy(trace)
         self.profile = profile
         self.execution_model = execution_model
         self.cache_mode = cache_mode
-        self.memory = MemoryHierarchy(profile, trace, cache_mode)
-        self.tpc = trace.ticks_per_cycle
-        self.uops = {uop.id: uop for uop in trace.uops}
-        self.macros = {macro.id: macro for macro in trace.macros}
+        self.memory = MemoryHierarchy(profile, self.trace, cache_mode)
+        self.tpc = self.trace.ticks_per_cycle
+        self.uops = {uop.id: uop for uop in self.trace.uops}
+        self.macros = {macro.id: macro for macro in self.trace.macros}
         self.rob: deque[str] = deque()
         self.unissued_dispatched: set[str] = set()
         self.completion_heap: list[tuple[int, int, str]] = []
         self.resource_free = {
             resource_id: [0] * resource.capacity
-            for resource_id, resource in trace.resources.items()
+            for resource_id, resource in self.trace.resources.items()
         }
         self.last_class_issue: dict[str, int] = {}
         self.issue_domain_free = {

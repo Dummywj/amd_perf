@@ -15,3 +15,6 @@
 | [`simulator_plan.md`](simulator_plan.md) | 事件驱动顺序/乱序模拟器的实施计划与审核决策。 |
 | [`simulator_resource.md`](simulator_resource.md) | 执行、访存、队列和共享 issue-domain 的资源模型。 |
 | [`simulator_result.md`](simulator_result.md) | Softmax 首轮模拟实现、调度统计和真机对比记录。 |
+| [`simulator_xsai.md`](simulator_xsai.md) | XSAI Core RVV profile、裸机 RTL、后端模型和 kernel 对齐执行计划。 |
+| [`xsai_sim.md`](xsai_sim.md) | XSAI RVV 裸机镜像构建、NEMU/RTL 运行、L1 检查和结果解析流程。 |
+| [`xsai_result.md`](xsai_result.md) | XSAI RTL 与通用 semantic-uop 模拟器的逐 kernel 对齐结果。 |

@@ -21,6 +21,40 @@ def validate_bound_trace(trace: BoundTrace) -> None:
     uops = {uop.id: uop for uop in trace.uops}
     referenced: set[str] = set()
     for macro in trace.macros:
+        for name, count in (
+            ("decoded_macro_ops", macro.decoded_macro_ops),
+            ("dispatch_units", macro.dispatch_width_units),
+            ("rob_entries", macro.rob_entry_count),
+            ("retire_macro_ops", macro.retire_macro_ops),
+        ):
+            if isinstance(count, bool) or not isinstance(count, int) or count < 1:
+                raise TraceValidationError(
+                    f"macro-op {macro.id} has invalid {name}: {count!r}"
+                )
+        if len(set(macro.dispatch_domains)) != len(macro.dispatch_domains):
+            raise TraceValidationError(
+                f"macro-op {macro.id} has duplicate dispatch domains"
+            )
+        unlisted_dispatch_demands = set(macro.dispatch_domain_demands) - set(
+            macro.dispatch_domains
+        )
+        if unlisted_dispatch_demands:
+            raise TraceValidationError(
+                f"macro-op {macro.id} has demands for unlisted dispatch domains: "
+                + ", ".join(sorted(unlisted_dispatch_demands))
+            )
+        for domain_id, demand in macro.dispatch_domain_demands.items():
+            if isinstance(demand, bool) or not isinstance(demand, int) or demand < 1:
+                raise TraceValidationError(
+                    f"macro-op {macro.id} has invalid demand for dispatch domain "
+                    f"{domain_id}: {demand!r}"
+                )
+        for name, demand in macro.rename_allocations.items():
+            if isinstance(demand, bool) or not isinstance(demand, int) or demand < 1:
+                raise TraceValidationError(
+                    f"macro-op {macro.id} has invalid rename allocation for "
+                    f"{name}: {demand!r}"
+                )
         if not macro.uop_ids:
             raise TraceValidationError(f"macro-op has no execution uops: {macro.id}")
         for uop_id in macro.uop_ids:
@@ -39,17 +73,67 @@ def validate_bound_trace(trace: BoundTrace) -> None:
     for uop in trace.uops:
         if uop.parent_id not in macros:
             raise TraceValidationError(f"unknown parent macro-op: {uop.parent_id}")
+        if not isinstance(uop.requires_vector_read_token, bool):
+            raise TraceValidationError(
+                f"uop {uop.id} has invalid vector read-token requirement: "
+                f"{uop.requires_vector_read_token!r}"
+            )
+        if not isinstance(uop.requires_vector_state, bool):
+            raise TraceValidationError(
+                f"uop {uop.id} has invalid vector-state requirement: "
+                f"{uop.requires_vector_state!r}"
+            )
+        if not isinstance(uop.reads_old_destination, bool):
+            raise TraceValidationError(
+                f"uop {uop.id} has invalid old-destination metadata: "
+                f"{uop.reads_old_destination!r}"
+            )
+        if not uop.vector_state_dependencies.issubset(uop.dependencies):
+            raise TraceValidationError(
+                f"uop {uop.id} has vector-state dependencies outside its dependency set"
+            )
+        if not uop.old_destination_dependencies.issubset(uop.dependencies):
+            raise TraceValidationError(
+                f"uop {uop.id} has old-destination dependencies outside its dependency set"
+            )
         unlisted_demands = set(uop.issue_domain_demands) - set(uop.issue_domains)
         if unlisted_demands:
             raise TraceValidationError(
                 f"uop {uop.id} has demands for unlisted issue domains: "
                 + ", ".join(sorted(unlisted_demands))
             )
+        if len(set(uop.scheduler_partition_choices)) != len(
+            uop.scheduler_partition_choices
+        ):
+            raise TraceValidationError(
+                f"uop {uop.id} has duplicate scheduler partition choices"
+            )
+        if len(set(uop.execution_unit_choices)) != len(uop.execution_unit_choices):
+            raise TraceValidationError(
+                f"uop {uop.id} has duplicate execution unit choices"
+            )
+        if uop.part_count is not None and uop.part_index is None:
+            raise TraceValidationError(
+                f"uop {uop.id} sets part_count without part_index"
+            )
+        if uop.part_index is not None and uop.part_count is not None and not (
+            0 <= uop.part_index < uop.part_count
+        ):
+            raise TraceValidationError(
+                f"uop {uop.id} has invalid part index/count: "
+                f"{uop.part_index}/{uop.part_count}"
+            )
         for domain_id, demand in uop.issue_domain_demands.items():
             if isinstance(demand, bool) or not isinstance(demand, int) or demand < 1:
                 raise TraceValidationError(
                     f"uop {uop.id} has invalid demand for issue domain "
                     f"{domain_id}: {demand!r}"
+                )
+        for name, demand in uop.rename_allocations.items():
+            if isinstance(demand, bool) or not isinstance(demand, int) or demand < 1:
+                raise TraceValidationError(
+                    f"uop {uop.id} has invalid rename allocation for {name}: "
+                    f"{demand!r}"
                 )
         for resource_id in uop.resource_choices:
             if resource_id not in trace.resources:

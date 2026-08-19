@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import copy
 import unittest
 from pathlib import Path
 
+from src.frontends.rvv import build_dynamic_trace as build_rvv_dynamic_trace
 from src.frontends.x86 import build_dynamic_trace
 from src.simulator.engine import simulate
 from src.simulator.memory import MemoryModelError
@@ -45,6 +47,37 @@ class MemoryTest(unittest.TestCase):
         result = simulate(self._trace(4096), self.profile, cache_mode="hot-capacity")
         self.assertGreater(result.summary["cache_line_accesses"]["l2"], 0)
         self.assertEqual(result.summary["cache_line_accesses"]["dram"], 0)
+
+    def test_memory_completion_keeps_recipe_side_latency(self) -> None:
+        base = load_profile(
+            ROOT / "profiles/xsai.yaml", ROOT / "schemas/profile.schema.json"
+        )
+        data = copy.deepcopy(base.data)
+        for entry in data["recipes"]["vle32.v:any"]["uops"]:
+            if entry["kind"] == "load_data":
+                entry["latency_cycles"] = 7
+        for entry in data["recipes"]["vse32.v:any"]["uops"]:
+            if entry["kind"] == "store_data":
+                entry["latency_cycles"] = 5
+        data["memory"]["levels"]["l1d"]["latency_cycles"] = 3
+        profile = type(base)(base.path, data, "memory-recipe-latency")
+        dynamic = build_rvv_dynamic_trace(
+            ROOT / "kernel/vector_copy/artifacts/rvv/vector_copy_rvv.s",
+            "vector_copy_rvv_f32",
+            ROOT / "recipes/rvv.yaml",
+            4,
+            ROOT / "uops/uop_kinds.yaml",
+            vlen_bits=128,
+        )
+
+        result = simulate(profile.bind(dynamic), profile, cache_mode="hot-l1")
+        load = next(uop for uop in result.trace.uops if uop.kind == "load_data")
+        store = next(uop for uop in result.trace.uops if uop.kind == "store_data")
+
+        self.assertEqual(load.latency_ticks, profile.ticks(7))
+        self.assertEqual(store.latency_ticks, profile.ticks(5))
+        self.assertEqual(load.complete_tick - load.issue_tick, profile.ticks(7))
+        self.assertEqual(store.complete_tick - store.issue_tick, profile.ticks(5))
 
 
 if __name__ == "__main__":

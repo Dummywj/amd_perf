@@ -76,6 +76,16 @@ def build_semantic_view_model(
                 "assembly": macro.assembly,
                 "semantic_ids": semantic_ids,
                 "execution_uop_count": len(macro_uops),
+                "dispatch_domains": list(macro.dispatch_domains),
+                "dispatch_domain_demands": dict(
+                    sorted(macro.dispatch_domain_demands.items())
+                ),
+                "rename_allocations": dict(
+                    sorted(macro.rename_allocations.items())
+                ),
+                "dispatch_blocker": macro.dispatch_blocker,
+                "dispatch_blocker_domain": macro.dispatch_blocker_domain,
+                "dispatch_blocker_count": macro.dispatch_blocker_count,
                 "timing": _timing(
                     macro.dispatch_tick,
                     first_issue,
@@ -195,6 +205,7 @@ def build_semantic_view_model(
             "total_ticks": result.total_ticks,
             "cycles": result.cycles,
             "workload": result.trace.workload,
+            "dispatch_domains": result.summary.get("dispatch_domain_stats", {}),
             "instruction_start": instruction_start,
             "instruction_count": len(instruction_nodes),
         },
@@ -239,6 +250,12 @@ def _execution_node(uop: ExecutionUop, result: SimulationResult) -> dict[str, An
         "stall_reason": uop.stall_reason,
         "stall_reasons": dict(sorted(uop.stall_reasons.items())),
         "dependency_ids": sorted(uop.dependencies),
+        "vector_state_dependencies": sorted(uop.vector_state_dependencies),
+        "old_destination_dependencies": sorted(
+            uop.old_destination_dependencies
+        ),
+        "requires_vector_state": uop.requires_vector_state,
+        "reads_old_destination": uop.reads_old_destination,
         "issue_after_uop": uop.issue_after_uop,
         "timing": _timing(
             uop.dispatch_tick, uop.issue_tick, uop.complete_tick, None

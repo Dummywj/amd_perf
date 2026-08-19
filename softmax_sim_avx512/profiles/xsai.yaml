@@ -1,0 +1,1013 @@
+schema_version: 5
+profile_id: xsai-default-matrix-rvv
+profile_status: draft
+description: >-
+  Source-derived profile for the RVV path of one XSAI Core instantiated by
+  DefaultMatrixConfig. CUTE is present in the target SoC but its instructions,
+  queues, execution units and traffic are outside this profile.
+
+cpu:
+  vendor: OpenXiangShan
+  family: XiangShan
+  model: XSAI
+  stepping: rtl-04909692
+  microarchitecture: xsai-core
+  configuration: DefaultMatrixConfig
+  core_count: 1
+  source_revision: 04909692a1cdc6b9165b95c7ea83b94bdc01ab39
+  product_names: [XSAI RTL DefaultMatrixConfig]
+
+isa:
+  architecture: riscv64
+  required_features: [rv64i, m, a, f, d, c, v, zvl128b]
+  logical_vector_registers: 32
+  physical_vector_registers: 128
+  max_vector_bits: 128
+  vector_length_bits: 128
+  max_element_bits: 64
+  vector_length_policy: runtime-vl
+
+pipeline:
+  dispatch_macro_ops_per_cycle: 6
+  retire_macro_ops_per_cycle: 8
+  rob_entries: 160
+  vector_scheduler_entries: 42
+  load_queue_entries: 72
+  store_queue_entries: 56
+  fetch_instructions_per_cycle: 8
+  decode_instructions_per_cycle: 6
+  rename_instructions_per_cycle: 6
+  vector_type_buffer_entries: 64
+  rename_allocation_buffer_entries: 256
+
+resources:
+  vfma:
+    kind: vector_fp
+    capacity: 2
+    width_bits: 128
+    source_latency_cycles: 3
+    pipelined: true
+    notes: Pipelined VfmaCfg instances reachable through VFEX0 and VFEX2.
+  vfalu:
+    kind: vector_fp
+    capacity: 2
+    width_bits: 128
+    source_latency_cycles: 1
+    pipelined: true
+    notes: Pipelined VfaluCfg instances reachable through VFEX1 and VFEX3.
+  vialu:
+    kind: vector_integer
+    capacity: 2
+    width_bits: 128
+    source_latency_cycles: 1
+    pipelined: true
+  vimac:
+    kind: vector_integer
+    capacity: 1
+    width_bits: 128
+    source_latency_cycles: 2
+    pipelined: true
+  vppu:
+    kind: shuffle
+    capacity: 1
+    width_bits: 128
+    source_latency_cycles: 2
+    pipelined: true
+  vipu:
+    kind: shuffle
+    capacity: 1
+    width_bits: 128
+    source_latency_cycles: 2
+    pipelined: true
+  vfcvt:
+    kind: conversion
+    capacity: 1
+    width_bits: 128
+    source_latency_cycles: 2
+    pipelined: true
+  vfdiv:
+    kind: vector_divide
+    capacity: 1
+    width_bits: 128
+    source_latency_cycles: measure
+    pipelined: false
+    notes: Unpipelined, with data-dependent latency still requiring RTL measurement.
+  vector-config:
+    kind: vector_control
+    capacity: 1
+    width_bits: 128
+    source_latency_cycles: 0
+    pipelined: true
+  i2v:
+    kind: vector_integer
+    capacity: 1
+    width_bits: 128
+    source_latency_cycles: 0
+    pipelined: true
+    notes: I2vCfg on BJU2 prepares an integer or immediate scalar for a vector uop.
+  f2v:
+    kind: vector_fp
+    capacity: 1
+    width_bits: 128
+    source_latency_cycles: 0
+    pipelined: true
+    notes: F2vCfg on FEX0 prepares an FP scalar for a vector uop.
+  scalar-load-data:
+    kind: load_data
+    capacity: 3
+    width_bits: 64
+    source_latency_cycles: 1
+    pipelined: false
+    bytes_per_cycle: 24
+    notes: >-
+      Source-visible LDU0/LDU1/LDU2 scalar load pipelines. End-to-end hit
+      latency and sustainable L1D bandwidth require RTL measurement.
+  scalar-store-address:
+    kind: address_generation
+    capacity: 2
+    width_bits: 64
+    source_latency_cycles: 1
+    pipelined: false
+    notes: Source-visible STA0/STA1 scalar store-address pipelines.
+  scalar-store-data:
+    kind: store_data
+    capacity: 2
+    width_bits: 64
+    source_latency_cycles: 0
+    pipelined: true
+    bytes_per_cycle: 16
+    notes: >-
+      Source-visible STD0/STD1 scalar store-data pipelines. The source-local
+      zero-cycle value does not replace an end-to-end RTL measurement.
+  address-generation:
+    kind: address_generation
+    capacity: 2
+    notes: Effective vector address resource for the two source-visible VLSUs.
+  load-data:
+    kind: load_data
+    capacity: 2
+    width_bits: 128
+    source_latency_cycles: 1
+    pipelined: false
+    bytes_per_cycle: 64
+  store-data:
+    kind: store_data
+    capacity: 2
+    width_bits: 128
+    source_latency_cycles: 0
+    pipelined: false
+    bytes_per_cycle: 64
+
+issue_domains: {}
+
+backend:
+  execution_model: generic-token
+  macro_op_accounting:
+    dispatch_units: max_decoded_or_execution_uops
+    rob_entries: architectural_instructions
+  rename:
+    enabled: true
+    free_lists:
+      vector:
+        free_entries: 81
+        notes: >-
+          Working free vector-physical-register estimate after architectural
+          mappings and implementation guard state.
+      vector_state:
+        free_entries: 31
+        notes: >-
+          Free VTYPE/VL state mappings available to the generic allocator.
+    allocation_width: 6
+    release_width: 6
+    release_delay_cycles: 1
+    availability_delay_cycles: 1
+    guard_entries: 6
+    policy: all_files_must_be_ready
+    evidence: [xsai-core-parameters]
+    notes: >-
+      Profile-driven approximation of XSAI physical vector and vector-state
+      rename capacity. It models admission pressure and delayed free-list
+      return; it does not claim the full implementation rename pipeline.
+  dispatch_domains:
+    vector-complex-decode:
+      capacity: 1
+      evidence: [xsai-vector-decode, xsai-uop-info]
+      notes: >-
+        Source-marked isComplex RVV macros are admitted through one
+        DecodeUnitComp input per architectural cycle. This frontend token is
+        independent of backend issue domains and carries no latency or
+        execution-bandwidth claim.
+  vector_dependency:
+    vector_state:
+      registers: [vconfig]
+      wait_execution_kinds:
+        - load_data
+        - store_data
+        - vector_fp
+        - vector_integer
+        - conversion
+        - shuffle
+        - vector_divide
+    old_destination:
+      mode: semantic
+      wait_execution_kinds:
+        - load_data
+        - store_data
+        - vector_fp
+        - vector_integer
+        - conversion
+        - shuffle
+        - vector_divide
+      implicit_execution_kinds:
+        - vector_fp
+        - conversion
+        - shuffle
+        - vector_divide
+    evidence: [xsai-vector-decode, xsai-fu-config]
+    notes: >-
+      XSAI vector issue entries consume the VTYPE/VL state path in addition to
+      ordinary data dependencies. Semantic uops marked reads_old_destination
+      retain the old vd edge. Source-marked VecOPF/VPPU execution classes also
+      keep the prior destination mapping as an implementation RAW source;
+      physical rename removes unrelated WAR/WAW edges.
+  scheduler_partitions:
+    - id: vf-iq-0
+      kind: vector_compute
+      entries: 16
+      enqueue_width: 2
+      execution_units: [vfex0, vfex1]
+    - id: vf-iq-1
+      kind: vector_compute
+      entries: 16
+      enqueue_width: 2
+      execution_units: [vfex2, vfex3]
+    - id: vf-iq-2
+      kind: vector_compute
+      entries: 10
+      enqueue_width: 2
+      execution_units: [vfex4]
+    - id: int-iq-2
+      kind: scalar
+      entries: 24
+      enqueue_width: 2
+      execution_units: [bju2-i2v]
+    - id: fp-iq-0
+      kind: scalar
+      entries: 18
+      enqueue_width: 2
+      execution_units: [fex0-f2v]
+    - id: sta-iq-0
+      kind: scalar
+      entries: 16
+      enqueue_width: 2
+      execution_units: [sta0]
+    - id: sta-iq-1
+      kind: scalar
+      entries: 16
+      enqueue_width: 2
+      execution_units: [sta1]
+    - id: ldu-iq-0
+      kind: scalar
+      entries: 16
+      enqueue_width: 2
+      execution_units: [ldu0]
+    - id: ldu-iq-1
+      kind: scalar
+      entries: 16
+      enqueue_width: 2
+      execution_units: [ldu1]
+    - id: ldu-iq-2
+      kind: scalar
+      entries: 16
+      enqueue_width: 2
+      execution_units: [ldu2]
+    - id: vlsu-iq-0
+      kind: vector_memory
+      entries: 16
+      enqueue_width: 2
+      execution_units: [vlsu0]
+    - id: vlsu-iq-1
+      kind: vector_memory
+      entries: 16
+      enqueue_width: 2
+      execution_units: [vlsu1]
+    - id: std-iq-0
+      kind: scalar
+      entries: 16
+      enqueue_width: 2
+      execution_units: [std0]
+    - id: std-iq-1
+      kind: scalar
+      entries: 16
+      enqueue_width: 2
+      execution_units: [std1]
+  execution_units:
+    vfex0:
+      scheduler_partition: vf-iq-0
+      functional_units: [vfma, vialu, vimac, vppu]
+      vector_read_domain: vf-rd-0
+      vector_writeback_domain: vf-wb-0
+    vfex1:
+      scheduler_partition: vf-iq-0
+      functional_units: [vfalu, vfcvt, vipu, vector-config]
+      vector_read_domain: vf-rd-0
+      vector_writeback_domain: vf-wb-0
+    vfex2:
+      scheduler_partition: vf-iq-1
+      functional_units: [vfma, vialu]
+      vector_read_domain: vf-rd-1
+      vector_writeback_domain: vf-wb-1
+    vfex3:
+      scheduler_partition: vf-iq-1
+      functional_units: [vfalu]
+      vector_read_domain: vf-rd-1
+      vector_writeback_domain: vf-wb-2
+    vfex4:
+      scheduler_partition: vf-iq-2
+      functional_units: [vfdiv]
+      vector_read_domain: vf-rd-1
+      vector_writeback_domain: vf-wb-3
+    bju2-i2v:
+      scheduler_partition: int-iq-2
+      functional_units: [i2v]
+      vector_writeback_domain: vf-wb-2
+    fex0-f2v:
+      scheduler_partition: fp-iq-0
+      functional_units: [f2v]
+      vector_writeback_domain: vf-wb-3
+    sta0:
+      scheduler_partition: sta-iq-0
+      functional_units: [scalar-store-address]
+    sta1:
+      scheduler_partition: sta-iq-1
+      functional_units: [scalar-store-address]
+    ldu0:
+      scheduler_partition: ldu-iq-0
+      functional_units: [scalar-load-data]
+    ldu1:
+      scheduler_partition: ldu-iq-1
+      functional_units: [scalar-load-data]
+    ldu2:
+      scheduler_partition: ldu-iq-2
+      functional_units: [scalar-load-data]
+    vlsu0:
+      scheduler_partition: vlsu-iq-0
+      functional_units: [address-generation, load-data, store-data]
+      vector_read_domain: vls-rd-0
+      vector_writeback_domain: vf-wb-4
+    vlsu1:
+      scheduler_partition: vlsu-iq-1
+      functional_units: [address-generation, load-data, store-data]
+      vector_read_domain: vls-rd-1
+      vector_writeback_domain: vf-wb-5
+    std0:
+      scheduler_partition: std-iq-0
+      functional_units: [scalar-store-data]
+    std1:
+      scheduler_partition: std-iq-1
+      functional_units: [scalar-store-data]
+  register_files:
+    vector:
+      logical_registers: 47
+      physical_registers: 128
+      width_bits: 128
+      read_ports: 12
+      writeback_ports: 6
+      read_domains:
+        vf-rd-0:
+          port_count: 3
+          arbitration_capacity: 1
+          execution_units: [vfex0, vfex1]
+        vf-rd-1:
+          port_count: 3
+          arbitration_capacity: 1
+          execution_units: [vfex2, vfex3, vfex4]
+        vls-rd-0:
+          port_count: 3
+          arbitration_capacity: 1
+          execution_units: [vlsu0]
+        vls-rd-1:
+          port_count: 3
+          arbitration_capacity: 1
+          execution_units: [vlsu1]
+      writeback_domains:
+        vf-wb-0:
+          port_count: 1
+          arbitration_capacity: 1
+          execution_units: [vfex0, vfex1]
+        vf-wb-1:
+          port_count: 1
+          arbitration_capacity: 1
+          execution_units: [vfex2]
+        vf-wb-2:
+          port_count: 1
+          arbitration_capacity: 1
+          execution_units: [vfex3, bju2-i2v]
+        vf-wb-3:
+          port_count: 1
+          arbitration_capacity: 1
+          execution_units: [vfex4, fex0-f2v]
+        vf-wb-4:
+          port_count: 1
+          arbitration_capacity: 1
+          execution_units: [vlsu0]
+        vf-wb-5:
+          port_count: 1
+          arbitration_capacity: 1
+          execution_units: [vlsu1]
+      notes: >-
+        VecLogicRegs is 32 architectural plus 15 temporary names. Port counts
+        describe the distinct VfRD/VfWB indices wired by the scheduler, not an
+        independently measured sustainable bandwidth.
+  vector_memory:
+    declared_vls_queue_entries: 8
+    declared_vls_queue_connected: false
+    load_pipelines: 2
+    store_pipelines: 2
+    source_input_width: 2
+    instruction_writeback_width: 1
+    max_unit_stride_flows: 2
+    load_merge_buffer_entries: 16
+    store_merge_buffer_entries: 16
+    notes: >-
+      VlsQueueSize is declared as eight but has no consumer in this source
+      revision, so it is not an effective queue capacity. The remaining values
+      are source-visible structural parameters; split, replay, merge and
+      cache-service timing remain outside the current generic event backend.
+  vector_decomposition:
+    register_width_bits: 128
+    rules:
+      vector-vector: lmul
+      vector-scalar:
+        parts: lmul
+        prep_uops:
+          register: &i2v_prep
+            id: i2v-prep
+            kind: vector_integer
+            latency_cycles: 0
+            issue_interval_cycles: 1
+            resource_choices: [i2v]
+            resource_occupancy_cycles: 1
+            rename_allocations: {vector: 1}
+          immediate:
+            <<: *i2v_prep
+            id: immediate-to-vector-prep
+          fp_register:
+            id: f2v-prep
+            kind: vector_fp
+            latency_cycles: 0
+            issue_interval_cycles: 1
+            resource_choices: [f2v]
+            resource_occupancy_cycles: 1
+            rename_allocations: {vector: 1}
+      vector-config: 1
+      vector-reduction: 1
+      vector-memory:
+        parts: dynamic
+        prep_uops:
+          default:
+            <<: *i2v_prep
+            id: memory-to-vector-prep
+    notes: >-
+      XSAI decode expands RVV instructions by LMUL and operation class. A
+      vector-scalar instruction first runs an I2V/F2V preparation uop and then
+      LMUL compute uops; unit-stride memory is split into active 128-bit flows.
+      These remain hardware execution uops beneath the unchanged semantic-uop ISA.
+  notes: >-
+    Scalar LDU/STA/STD issue blocks are distinct from the two vector VLSUs. The
+    current ISA-neutral scalar_store semantic is represented by its STD token;
+    STA0/STA1 remain explicit for source-topology audit without creating a
+    second cache access. This topology intentionally contains no matrix
+    scheduler, CUTE execution unit or matrix resource. Capability testing
+    showed that the shared generic token backend can express the required
+    scheduler, slot and writeback rules; no independent XSAI event engine is used.
+
+recipes:
+  "flw:any": &scalar_load_recipe
+    required_features: [f]
+    decoded_macro_ops: 1
+    retire_macro_ops: 1
+    uops:
+      - id: load
+        kind: load_data
+        latency_cycles: 1
+        issue_interval_cycles: 1
+        resource_choices: [scalar-load-data]
+        resource_occupancy_cycles: 1
+    evidence: [xsai-fu-config, xsai-rtl-pending]
+  "ld:any":
+    <<: *scalar_load_recipe
+    required_features: [rv64i]
+
+  "fsw:any": &scalar_store_recipe
+    required_features: [f]
+    decoded_macro_ops: 1
+    retire_macro_ops: 1
+    uops:
+      - id: store
+        kind: store_data
+        latency_cycles: 0
+        issue_interval_cycles: 0.5
+        resource_choices: [scalar-store-data]
+        resource_occupancy_cycles: 1
+    evidence: [xsai-fu-config, xsai-rtl-pending]
+  "sd:any":
+    <<: *scalar_store_recipe
+    required_features: [rv64i]
+
+  "vsetvli:any":
+    required_features: [v]
+    decoded_macro_ops: 2
+    retire_macro_ops: 1
+    dispatch_domains: [vector-complex-decode]
+    uops:
+      - id: configure
+        kind: vector_control
+        latency_cycles: 5
+        issue_interval_cycles: 5
+        resource_choices: [vector-config]
+        resource_occupancy_cycles: 1
+        rename_allocations: {vector_state: 1}
+    evidence: [xsai-fu-config, xsai-rtl-2026-08-19]
+
+  "vle32.v:any":
+    required_features: [v]
+    decoded_macro_ops: 2
+    retire_macro_ops: 1
+    dispatch_domains: [vector-complex-decode]
+    uops:
+      - id: agu
+        kind: address_generation
+        latency_cycles: 0
+        issue_interval_cycles: 1
+        resource_choices: [address-generation]
+        resource_occupancy_cycles: 1
+      - id: load
+        kind: load_data
+        latency_cycles: 1
+        issue_interval_cycles: 1
+        resource_choices: [load-data]
+        resource_occupancy_cycles: 1
+        rename_allocations: {vector: 1}
+        depends_on: [agu]
+    evidence: [xsai-vector-decode, xsai-vector-memory]
+    notes: Dynamic flow splitting and replay depend on VL, LMUL and alignment.
+
+  "vse32.v:any":
+    required_features: [v]
+    decoded_macro_ops: 2
+    retire_macro_ops: 1
+    dispatch_domains: [vector-complex-decode]
+    uops:
+      - id: agu
+        kind: address_generation
+        latency_cycles: 0
+        issue_interval_cycles: 1
+        resource_choices: [address-generation]
+        resource_occupancy_cycles: 1
+      - id: store
+        kind: store_data
+        latency_cycles: 0
+        issue_interval_cycles: 1
+        resource_choices: [store-data]
+        resource_occupancy_cycles: 1
+        depends_on: [agu]
+    evidence: [xsai-vector-decode, xsai-vector-memory]
+    notes: Dynamic flow splitting and replay depend on VL, LMUL and alignment.
+
+  "vfadd.vv:any": &vfalu_vv_recipe
+    required_features: [v]
+    decoded_macro_ops: 1
+    retire_macro_ops: 1
+    dispatch_domains: [vector-complex-decode]
+    uops:
+      - id: execute
+        kind: vector_fp
+        latency_cycles: 6
+        issue_interval_cycles: 1
+        resource_choices: [vfalu]
+        resource_occupancy_cycles: 1
+        rename_allocations: {vector: 1}
+    evidence: [xsai-fu-config, xsai-vector-decode, xsai-rtl-2026-08-19]
+  "vfsub.vv:any": *vfalu_vv_recipe
+  "vfsub.vf:any": &vfalu_vf_recipe
+    <<: *vfalu_vv_recipe
+    decoded_macro_ops: 2
+  "vfmax.vf:any": *vfalu_vf_recipe
+  "vfmin.vf:any": *vfalu_vf_recipe
+  "vfmv.v.f:any": *vfalu_vf_recipe
+  "vfmv.f.s:any":
+    required_features: [v]
+    decoded_macro_ops: 1
+    retire_macro_ops: 1
+    dispatch_domains: [vector-complex-decode]
+    uops:
+      - id: execute
+        kind: vector_fp
+        latency_cycles: 6
+        issue_interval_cycles: 1
+        resource_choices: [vfalu]
+        resource_occupancy_cycles: 1
+    evidence: [xsai-fu-config, xsai-vector-decode, xsai-rtl-2026-08-19]
+    notes: >-
+      VFMV_F_S uses the decoder dummy split and writes the scalar FP register
+      file; unlike VFMV_V_F it does not require an F2V preparation uop.
+
+  "vfmul.vv:any": &vfma_vv_recipe
+    required_features: [v]
+    decoded_macro_ops: 1
+    retire_macro_ops: 1
+    dispatch_domains: [vector-complex-decode]
+    uops:
+      - id: execute
+        kind: vector_fp
+        latency_cycles: 8
+        issue_interval_cycles: 1
+        resource_choices: [vfma]
+        resource_occupancy_cycles: 1
+        rename_allocations: {vector: 1}
+    evidence: [xsai-fu-config, xsai-vector-decode, xsai-rtl-2026-08-19]
+    notes: VfmaCfg also implements vector multiply.
+  "vfmacc.vv:any": *vfma_vv_recipe
+  "vfmul.vf:any": &vfma_vf_recipe
+    <<: *vfma_vv_recipe
+    decoded_macro_ops: 2
+  "vfmacc.vf:any": *vfma_vf_recipe
+
+  "vfcvt.rtz.x.f.v:any": &vfcvt_recipe
+    required_features: [v]
+    decoded_macro_ops: 1
+    retire_macro_ops: 1
+    dispatch_domains: [vector-complex-decode]
+    uops:
+      - id: execute
+        kind: conversion
+        latency_cycles: 7
+        issue_interval_cycles: 1
+        resource_choices: [vfcvt]
+        resource_occupancy_cycles: 1
+        rename_allocations: {vector: 1}
+    evidence: [xsai-fu-config, xsai-vector-decode, xsai-rtl-2026-08-19]
+  "vfcvt.f.x.v:any": *vfcvt_recipe
+
+  "vadd.vx:any": &vialu_vx_recipe
+    required_features: [v]
+    decoded_macro_ops: 2
+    retire_macro_ops: 1
+    dispatch_domains: [vector-complex-decode]
+    uops:
+      - id: execute
+        kind: vector_integer
+        latency_cycles: 6
+        issue_interval_cycles: 1
+        resource_choices: [vialu]
+        resource_occupancy_cycles: 1
+        rename_allocations: {vector: 1}
+    evidence: [xsai-fu-config, xsai-vector-decode, xsai-rtl-2026-08-19]
+  "vsll.vi:any": &vialu_vi_recipe
+    <<: *vialu_vx_recipe
+    decoded_macro_ops: 2
+  "vmv.v.i:any": *vialu_vi_recipe
+  "vmv.v.v:any": &vialu_vv_recipe
+    <<: *vialu_vx_recipe
+    decoded_macro_ops: 1
+
+  "vfredmax.vs:any": &reduction_recipe
+    required_features: [v]
+    decoded_macro_ops: 3
+    retire_macro_ops: 1
+    dispatch_domains: [vector-complex-decode]
+    uops:
+      - id: execute
+        kind: vector_fp
+        latency_cycles: 18
+        issue_interval_cycles: 1.75
+        resource_choices: [vfalu]
+        resource_occupancy_cycles: 2
+        rename_allocations: {vector: 1}
+    evidence: [xsai-vector-decode, xsai-rtl-2026-08-19]
+    notes: >-
+      The e32/m1 decoder emits three internal reduction uops. The 1.75-cycle
+      equivalent interval rounds the clean RTL throughput medians of 1.69-1.71
+      cycles per independent reduction; it is not a claim about one physical pipe.
+  "vfredusum.vs:any":
+    <<: *reduction_recipe
+    decoded_macro_ops: 3
+
+scalar_control_fit:
+  enabled: true
+  resources:
+    scalar-alu:
+      capacity: 4
+    scalar-fp:
+      capacity: 3
+    scalar-div:
+      capacity: 2
+    branch:
+      capacity: 3
+  uops:
+    scalar_alu: &scalar_pending
+      latency_cycles: 1
+      issue_interval_cycles: 0.25
+      resource_occupancy_cycles: 1
+      resource_choices: [scalar-alu]
+    scalar_fp_add:
+      <<: *scalar_pending
+      latency_cycles: 2
+      resource_choices: [scalar-fp]
+    scalar_fp_div:
+      <<: *scalar_pending
+      latency_cycles: 6
+      issue_interval_cycles: 1
+      resource_occupancy_cycles: 6
+      resource_choices: [scalar-div]
+    scalar_move: *scalar_pending
+    branch:
+      <<: *scalar_pending
+      resource_choices: [branch]
+    return:
+      <<: *scalar_pending
+      resource_choices: [branch]
+  evidence: [xsai-rtl-2026-08-19, xsai-rtl-pending]
+  notes: >-
+    Scalar ALU and scalar FP add dependency/throughput plus scalar FP div
+    dependency points are directly measured below. Branch and move timing
+    remains pending directed measurement.
+
+memory:
+  cache_line_bytes: 64
+  levels:
+    l1d:
+      size_bytes: 65536
+      ways: 4
+      banks: 1
+      data_banks: 8
+      sets_per_bank: 256
+      latency_cycles: 1
+      read_bytes_per_cycle: 64
+      write_bytes_per_cycle: 64
+      max_outstanding_misses: 16
+      shared_by_cores: 1
+      notes: >-
+        Geometry comes from WithNKBL1D(64, ways=4); the DCache implementation
+        has eight internal data banks. `banks` is the capacity-bank count used
+        for geometry; `data_banks` records the internal 8-bank datapath and does
+        not multiply the 64 KiB capacity. Service timing and bank conflicts are
+        pending.
+    l2:
+      size_bytes: 2097152
+      ways: 8
+      banks: 8
+      sets_per_bank: 512
+      latency_cycles: measure
+      read_bytes_per_cycle: measure
+      write_bytes_per_cycle: measure
+      max_outstanding_misses: measure
+      shared_by_cores: 1
+      notes: >-
+        DefaultConfig creates 512 sets per bank for four banks and
+        DefaultMatrixConfig changes L2NBanks to eight, yielding 2 MiB total.
+        The generated RTL will be checked before non-L1 alignment is attempted.
+    l3:
+      size_bytes: 16777216
+      ways: 16
+      banks: 4
+      sets_per_bank: 4096
+      latency_cycles: measure
+      read_bytes_per_cycle: measure
+      write_bytes_per_cycle: measure
+      max_outstanding_misses: measure
+      shared_by_cores: 1
+  dram:
+    latency_cycles: measure
+    read_bytes_per_cycle: measure
+    write_bytes_per_cycle: measure
+    max_outstanding_requests: measure
+
+metadata:
+  created_at: "2026-08-17T00:00:00+08:00"
+  last_calibrated_at: "2026-08-19T00:00:00+08:00"
+  simulator_min_version: 0.4.0-dev
+  sources:
+    - id: xsai-core-parameters
+      kind: source_code
+      title: XSAI XSCoreParameters
+      uri: ../../../xsai-env/XSAI/src/main/scala/xiangshan/Parameters.scala
+      accessed_on: "2026-08-17"
+      revision: 04909692a1cdc6b9165b95c7ea83b94bdc01ab39
+      notes: ISA, widths, queues, ROB, physical registers and vector-memory limits.
+    - id: xsai-default-matrix-config
+      kind: source_code
+      title: XSAI DefaultMatrixConfig composition
+      uri: ../../../xsai-env/XSAI/src/main/scala/top/Configs.scala
+      accessed_on: "2026-08-17"
+      revision: 04909692a1cdc6b9165b95c7ea83b94bdc01ab39
+      notes: >-
+        Single-core target inherits DefaultConfig cache geometry and instantiates
+        CUTE. CUTE remains dormant and is deliberately absent from backend resources.
+    - id: xsai-vf-scheduler
+      kind: source_code
+      title: XSAI vector-FP scheduler and execution-unit topology
+      uri: ../../../xsai-env/XSAI/src/main/scala/xiangshan/Parameters.scala
+      accessed_on: "2026-08-17"
+      revision: 04909692a1cdc6b9165b95c7ea83b94bdc01ab39
+      notes: VF issue queues, FU eligibility and scheduler-side RF port indices.
+    - id: xsai-memory-scheduler
+      kind: source_code
+      title: XSAI scalar and vector memory scheduler topology
+      uri: ../../../xsai-env/XSAI/src/main/scala/xiangshan/Parameters.scala
+      accessed_on: "2026-08-18"
+      revision: 04909692a1cdc6b9165b95c7ea83b94bdc01ab39
+      notes: >-
+        Defines three scalar LDUs, two scalar store-address units, two scalar
+        store-data units and two vector VLSUs in independent 16-entry issue blocks.
+    - id: xsai-fu-config
+      kind: source_code
+      title: XSAI functional-unit configuration
+      uri: ../../../xsai-env/XSAI/src/main/scala/xiangshan/backend/fu/FuConfig.scala
+      accessed_on: "2026-08-17"
+      revision: 04909692a1cdc6b9165b95c7ea83b94bdc01ab39
+      notes: >-
+        Source-declared base latency, pipeline property and 128-bit destination
+        width. Vector wakeup maps add an OG2 cycle, so recipe dependency latency
+        remains measure until RTL verification.
+    - id: xsai-vector-decode
+      kind: source_code
+      title: XSAI RVV instruction to FU decode
+      uri: ../../../xsai-env/XSAI/src/main/scala/xiangshan/backend/decode/VecDecoder.scala
+      accessed_on: "2026-08-17"
+      revision: 04909692a1cdc6b9165b95c7ea83b94bdc01ab39
+      notes: FU eligibility and decoder split class for the current kernel opcodes.
+    - id: xsai-uop-info
+      kind: source_code
+      title: XSAI RVV hardware-uop decomposition
+      uri: ../../../xsai-env/XSAI/src/main/scala/xiangshan/backend/decode/UopInfoGen.scala
+      accessed_on: "2026-08-17"
+      revision: 04909692a1cdc6b9165b95c7ea83b94bdc01ab39
+      notes: LMUL-dependent vector arithmetic, vset, reduction and memory split rules.
+    - id: xsai-decode-stage
+      kind: source_code
+      title: XSAI complex-instruction decode admission
+      uri: ../../../xsai-env/XSAI/src/main/scala/xiangshan/backend/decode/DecodeStage.scala
+      accessed_on: "2026-08-18"
+      revision: 04909692a1cdc6b9165b95c7ea83b94bdc01ab39
+      notes: >-
+        One DecodeUnitComp/PriorityMux path admits source-marked complex
+        instructions per architectural cycle.
+    - id: xsai-decode-unit-comp
+      kind: source_code
+      title: XSAI complex decode-unit drain behavior
+      uri: ../../../xsai-env/XSAI/src/main/scala/xiangshan/backend/decode/DecodeUnitComp.scala
+      accessed_on: "2026-08-18"
+      revision: 04909692a1cdc6b9165b95c7ea83b94bdc01ab39
+      notes: >-
+        A complex macro is drained into rename uops before the next complex
+        macro is accepted; this motivates dispatch-domain and partial-drain
+        modeling in the generic backend.
+    - id: xsai-vector-memory
+      kind: source_code
+      title: XSAI vector-memory split and merge implementation
+      uri: ../../../xsai-env/XSAI/src/main/scala/xiangshan/mem/vector/VSplit.scala
+      accessed_on: "2026-08-17"
+      revision: 04909692a1cdc6b9165b95c7ea83b94bdc01ab39
+      notes: Unit-stride accesses may split into implementation flows and replay.
+    - id: xsai-dcache
+      kind: source_code
+      title: XSAI L1 data-cache implementation parameters
+      uri: ../../../xsai-env/XSAI/src/main/scala/xiangshan/cache/dcache/DCacheWrapper.scala
+      accessed_on: "2026-08-17"
+      revision: 04909692a1cdc6b9165b95c7ea83b94bdc01ab39
+      notes: Confirms the 64-byte line and eight internal data banks.
+    - id: xsai-coupled-l2
+      kind: source_code
+      title: XSAI CoupledL2 submodule revision
+      uri: ../../../xsai-env/XSAI/coupledL2
+      accessed_on: "2026-08-17"
+      revision: 7b690d4dd48adbee8cb31e78a6df3fdfaf863d5a
+      notes: Frozen dependency for subsequent elaboration of the L2 geometry.
+    - id: xsai-cute-submodule
+      kind: source_code
+      title: XSAI CUTE submodule revision
+      uri: ../../../xsai-env/XSAI/CUTE
+      accessed_on: "2026-08-17"
+      revision: de31b2d23f042ff3e5bddc93b7f9ceb0e9263122
+      notes: Instantiated by DefaultMatrixConfig but excluded from RVV resources.
+    - id: xsai-rtl-pending
+      kind: assumption
+      title: Parameters pending directed XSAI RTL measurement
+      accessed_on: "2026-08-17"
+      notes: Every value spelled measure must be resolved before profile binding.
+    - id: xsai-rtl-2026-08-19
+      kind: measurement
+      title: XSAI RTL formal microbenchmark collection
+      uri: ../artifacts/xsai/rtl/profile_summary.csv
+      accessed_on: "2026-08-19"
+      command: >-
+        make run-rtl via xsai/scripts/run_rtl.sh; emulator -i
+        artifacts/xsai/build/xsai-kernel-bench-riscv64-xs.bin --diff
+        XSAI/ready-to-run/riscv64-nemu-interpreter-so -C 500000000
+        --force-dump-result
+      revision: 04909692a1cdc6b9165b95c7ea83b94bdc01ab39
+      notes: >-
+        Formal clean run for 41 microbenchmark cases x 5 samples and 12 kernels
+        x 3 N. Gates: rtl_status=PASS, good_trap=PASS, hpm_audit=PASS,
+        cute_activity=0, l1d_and_dtlb_misses=0, cache_status=CLEAN. Hashes:
+        rtl.log=bce328741c7387c8a9fbe962bbb5ec66eb2ca8232ca0a54de958c56532c8ef3d;
+        summary.csv=270b8227646e5dafef1da5b130a66abfb7c11d0258144a623001191dc54fd493;
+        profile_summary.csv=7f2aae17ebb81680d7ade2bf39970dd682e063dc5a32ae8f735fda1462eac6c3;
+        result_metadata.json=ea7332659eaa46bce119da62e1f7baa9fbd6629294c343c9da1a459030973bac;
+        binary=b70586383ec58f12dc1241592edc83c48b448f95f274db4d6ec917363ee263d8;
+        elf=62a6d4a5913673e3b92c4529f86851d83c7ad3175ead4725cc6f561ee027cb5e;
+        disassembly=728bcaab301ef7dee536fca7bf17b56315cdef6347b317e2966c8876f1c039ca.
+  notes: >-
+    Source revision and DefaultMatrixConfig are frozen for this draft. No file
+    under xsai-env was modified while extracting the profile. This profile does
+    not claim that source-local CertainLatency alone equals observed dependency
+    latency after scheduler wakeup and writeback arbitration.
+
+evidence:
+  - parameter: cpu
+    sources: [xsai-default-matrix-config]
+    confidence: high
+  - parameter: isa
+    sources: [xsai-core-parameters]
+    confidence: high
+  - parameter: pipeline
+    sources: [xsai-core-parameters]
+    confidence: high
+    notes: >-
+      Global dispatch width follows decode/rename width. Source-marked complex
+      RVV macro admission is modeled separately by backend.dispatch_domains.
+  - parameter: backend.scheduler_partitions
+    sources: [xsai-vf-scheduler, xsai-memory-scheduler]
+    confidence: high
+  - parameter: backend.dispatch_domains.vector-complex-decode
+    sources: [xsai-vector-decode, xsai-uop-info, xsai-decode-stage, xsai-decode-unit-comp]
+    confidence: high
+    notes: >-
+      DecodeUnitComp accepts one source-marked isComplex macro at a time;
+      this is a macro admission constraint, not a backend issue-port claim.
+  - parameter: backend.execution_units
+    sources: [xsai-vf-scheduler, xsai-memory-scheduler, xsai-fu-config]
+    confidence: high
+  - parameter: backend.register_files.vector
+    sources: [xsai-core-parameters, xsai-vf-scheduler]
+    confidence: medium
+    notes: Capacity and wiring are static; effective arbitration is still unknown.
+  - parameter: backend.vector_memory
+    sources: [xsai-core-parameters, xsai-vector-memory]
+    confidence: high
+    notes: Structural limits only, not service latency or throughput.
+  - parameter: backend.vector_decomposition
+    sources: [xsai-uop-info]
+    confidence: medium
+    notes: Vector-vector and vector-scalar rules are known; reduction and memory remain pending.
+  - parameter: resources
+    sources: [xsai-vf-scheduler, xsai-memory-scheduler, xsai-fu-config]
+    confidence: medium
+    notes: Counts express source-visible eligibility, not calibrated aggregate throughput.
+  - parameter: recipes.scalar-memory
+    sources: [xsai-memory-scheduler, xsai-fu-config, xsai-rtl-pending]
+    confidence: medium
+    notes: >-
+      Scalar load/store execution eligibility is structural; end-to-end L1D
+      timing and bandwidth remain pending RTL measurement.
+  - parameter: recipes.vector-compute
+    sources: [xsai-fu-config, xsai-vector-decode, xsai-rtl-2026-08-19]
+    confidence: medium
+    notes: >-
+      vfalu, vfma, vfcvt and vialu dependency/throughput cases are directly
+      measured; recipe values remain the existing rounded profile values.
+  - parameter: recipes.vector-memory-and-reduction
+    sources: [xsai-vector-memory, xsai-vector-decode, xsai-rtl-2026-08-19]
+    confidence: medium
+    notes: Reduction dependency and throughput are directly measured; vector-memory timing remains pending.
+  - parameter: recipes.vset
+    sources: [xsai-fu-config, xsai-rtl-2026-08-19]
+    confidence: medium
+    notes: vset dependency and throughput are directly measured.
+  - parameter: scalar_control_fit.scalar_alu_fp
+    sources: [xsai-rtl-2026-08-19]
+    confidence: medium
+    notes: Scalar ALU and scalar FP add dependency/throughput plus scalar FP div dependency are directly measured.
+  - parameter: scalar_control_fit.branch_move
+    sources: [xsai-rtl-pending]
+    confidence: low
+    notes: Branch and move timing have no direct measurement in this collection.
+  - parameter: scalar_control_fit
+    sources: [xsai-rtl-2026-08-19, xsai-rtl-pending]
+    confidence: low
+    notes: Scalar ALU/FP timing is measured; branch and move timing remain pending.
+  - parameter: memory.levels.l1d.geometry
+    sources: [xsai-default-matrix-config, xsai-dcache]
+    confidence: high
+  - parameter: memory.levels.l2.geometry
+    sources: [xsai-default-matrix-config, xsai-coupled-l2]
+    confidence: medium
+    notes: Must be confirmed from generated DefaultMatrixConfig RTL before L2 tests.
+  - parameter: memory.levels.l3.geometry
+    sources: [xsai-default-matrix-config]
+    confidence: high
+  - parameter: memory.timing
+    sources: [xsai-rtl-pending]
+    confidence: low

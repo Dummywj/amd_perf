@@ -25,6 +25,7 @@ def write_events_jsonl(path: Path, result: SimulationResult) -> None:
         "ticks_per_cycle": result.ticks_per_cycle,
         "cycles": result.cycles,
         "workload": result.trace.workload,
+        "dispatch_domain_stats": result.summary.get("dispatch_domain_stats", {}),
     }
     with path.open("w", encoding="utf-8") as stream:
         stream.write(json.dumps(metadata, sort_keys=True) + "\n")
@@ -270,8 +271,8 @@ def _occupancy_samples(result: SimulationResult) -> list[tuple[int, dict[str, in
     for macro in result.trace.macros:
         if macro.dispatch_tick is None or macro.retire_tick is None:
             continue
-        deltas[macro.dispatch_tick]["rob"] += macro.decoded_macro_ops
-        deltas[macro.retire_tick]["rob"] -= macro.decoded_macro_ops
+        deltas[macro.dispatch_tick]["rob"] += macro.rob_entry_count
+        deltas[macro.retire_tick]["rob"] -= macro.rob_entry_count
         if macro.uses_load_queue:
             deltas[macro.dispatch_tick]["load_queue"] += 1
             deltas[macro.retire_tick]["load_queue"] -= 1
@@ -347,6 +348,7 @@ def _uop_args(uop: Any, ticks_per_cycle: int) -> dict[str, Any]:
         "mnemonic": uop.mnemonic,
         "assembly": uop.assembly,
         "memory_level": uop.memory_level,
+        "vector_read_domain": uop.vector_read_domain,
         "stall_reason": uop.stall_reason,
         "stall_reasons": dict(sorted(uop.stall_reasons.items())),
         "issue_cycle": _cycle(uop.issue_tick, ticks_per_cycle),

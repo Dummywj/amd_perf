@@ -5,6 +5,21 @@
   "description": "Cycle-level profile for straight-line vector kernels used in LLM inference. This MVP intentionally excludes masks, complex control flow, TLB and detailed prefetch state.",
   "type": "object",
   "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "schema_version": {
+            "const": 5
+          }
+        },
+        "required": ["schema_version"]
+      },
+      "then": {
+        "required": ["backend"]
+      }
+    }
+  ],
   "required": [
     "schema_version",
     "profile_id",
@@ -14,16 +29,16 @@
     "pipeline",
     "resources",
     "issue_domains",
-    "memory_compute_overlap_limit",
     "recipes",
-    "scalar_control_fit",
     "memory",
     "metadata",
     "evidence"
   ],
   "properties": {
     "schema_version": {
-      "const": 4
+      "type": "integer",
+      "enum": [4, 5],
+      "description": "Version 5 adds ISA-neutral vector and structural backend fields while retaining version 4 profiles."
     },
     "profile_id": {
       "$ref": "#/$defs/identifier"
@@ -64,6 +79,9 @@
       "additionalProperties": {
         "$ref": "#/$defs/issue_domain"
       }
+    },
+    "backend": {
+      "$ref": "#/$defs/backend"
     },
     "memory_compute_overlap_limit": {
       "$ref": "#/$defs/memory_compute_overlap_limit"
@@ -139,6 +157,17 @@
         }
       ]
     },
+    "nonnegative_integer_or_measure": {
+      "oneOf": [
+        {
+          "type": "integer",
+          "minimum": 0
+        },
+        {
+          "const": "measure"
+        }
+      ]
+    },
     "cpu": {
       "type": "object",
       "additionalProperties": false,
@@ -163,6 +192,18 @@
         "microarchitecture": {
           "$ref": "#/$defs/identifier"
         },
+        "configuration": {
+          "type": "string",
+          "minLength": 1
+        },
+        "core_count": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "source_revision": {
+          "type": "string",
+          "minLength": 7
+        },
         "product_names": {
           "type": "array",
           "items": {
@@ -176,8 +217,11 @@
     "isa": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["required_features", "zmm_registers", "max_vector_bits"],
+      "required": ["required_features", "max_vector_bits"],
       "properties": {
+        "architecture": {
+          "$ref": "#/$defs/identifier"
+        },
         "required_features": {
           "type": "array",
           "minItems": 1,
@@ -190,9 +234,28 @@
           "type": "integer",
           "minimum": 1
         },
+        "logical_vector_registers": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "physical_vector_registers": {
+          "$ref": "#/$defs/positive_integer_or_measure"
+        },
         "max_vector_bits": {
           "type": "integer",
-          "enum": [128, 256, 512]
+          "minimum": 1
+        },
+        "vector_length_bits": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_element_bits": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "vector_length_policy": {
+          "type": "string",
+          "enum": ["fixed", "runtime-vl"]
         }
       }
     },
@@ -209,12 +272,14 @@
       ],
       "properties": {
         "dispatch_macro_ops_per_cycle": {
+          "description": "Dispatch bandwidth in the units selected by backend.macro_op_accounting.dispatch_units; legacy profiles count decoded macro-ops.",
           "$ref": "#/$defs/positive_number_or_measure"
         },
         "retire_macro_ops_per_cycle": {
           "$ref": "#/$defs/positive_number_or_measure"
         },
         "rob_entries": {
+          "description": "ROB capacity in the units selected by backend.macro_op_accounting.rob_entries; legacy profiles count decoded macro-ops.",
           "$ref": "#/$defs/positive_integer_or_measure"
         },
         "vector_scheduler_entries": {
@@ -224,6 +289,24 @@
           "$ref": "#/$defs/positive_integer_or_measure"
         },
         "store_queue_entries": {
+          "$ref": "#/$defs/positive_integer_or_measure"
+        },
+        "fetch_instructions_per_cycle": {
+          "$ref": "#/$defs/positive_number_or_measure"
+        },
+        "decode_instructions_per_cycle": {
+          "$ref": "#/$defs/positive_number_or_measure"
+        },
+        "rename_instructions_per_cycle": {
+          "$ref": "#/$defs/positive_number_or_measure"
+        },
+        "vector_type_buffer_entries": {
+          "$ref": "#/$defs/positive_integer_or_measure"
+        },
+        "rename_allocation_buffer_entries": {
+          "$ref": "#/$defs/positive_integer_or_measure"
+        },
+        "vector_memory_queue_entries": {
           "$ref": "#/$defs/positive_integer_or_measure"
         }
       }
@@ -235,6 +318,8 @@
         "vector_integer",
         "conversion",
         "shuffle",
+        "vector_control",
+        "vector_divide",
         "address_generation",
         "load_data",
         "store_data"
@@ -257,10 +342,513 @@
         "bytes_per_cycle": {
           "$ref": "#/$defs/positive_number_or_measure"
         },
+        "source_latency_cycles": {
+          "description": "Latency declared by the source FU block. This is provenance, not necessarily end-to-end dependency latency used by a recipe.",
+          "$ref": "#/$defs/number_or_measure"
+        },
+        "pipelined": {
+          "type": "boolean"
+        },
         "notes": {
           "type": "string"
         }
       }
+    },
+    "backend": {
+      "type": "object",
+      "description": "Structural backend topology. The event engine may consume only a supported execution_model; topology remains auditable even while a profile is draft.",
+      "additionalProperties": false,
+      "required": [
+        "execution_model",
+        "scheduler_partitions",
+        "execution_units",
+        "register_files",
+        "vector_memory"
+      ],
+      "properties": {
+        "execution_model": {
+          "$ref": "#/$defs/identifier"
+        },
+        "macro_op_accounting": {
+          "$ref": "#/$defs/macro_op_accounting"
+        },
+        "dispatch_domains": {
+          "type": "object",
+          "description": "Frontend macro-op admission domains. Each dispatched macro consumes one token per listed domain unless a recipe demand override is provided; capacities reset at each architectural dispatch cycle.",
+          "propertyNames": {
+            "$ref": "#/$defs/identifier"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/dispatch_domain"
+          }
+        },
+        "scheduler_partitions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/scheduler_partition"
+          }
+        },
+        "execution_units": {
+          "type": "object",
+          "propertyNames": {
+            "$ref": "#/$defs/identifier"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/execution_unit"
+          }
+        },
+        "register_files": {
+          "type": "object",
+          "propertyNames": {
+            "$ref": "#/$defs/identifier"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/register_file"
+          }
+        },
+        "vector_memory": {
+          "$ref": "#/$defs/vector_memory_backend"
+        },
+        "rename": {
+          "$ref": "#/$defs/rename_backend"
+        },
+        "vector_dependency": {
+          "$ref": "#/$defs/vector_dependency_policy"
+        },
+        "vector_decomposition": {
+          "$ref": "#/$defs/vector_decomposition_backend"
+        },
+        "notes": {
+          "type": "string"
+        }
+      }
+    },
+    "macro_op_accounting": {
+      "type": "object",
+      "description": "Profile-driven mapping from a bound architectural instruction to independent dispatch-bandwidth and ROB-capacity units. If omitted, both retain the legacy decoded_macro_ops basis.",
+      "additionalProperties": false,
+      "required": ["dispatch_units", "rob_entries"],
+      "properties": {
+        "dispatch_units": {
+          "$ref": "#/$defs/macro_op_accounting_basis"
+        },
+        "rob_entries": {
+          "$ref": "#/$defs/macro_op_accounting_basis"
+        }
+      }
+    },
+    "macro_op_accounting_basis": {
+      "type": "string",
+      "enum": [
+        "decoded_macro_ops",
+        "execution_uops",
+        "max_decoded_or_execution_uops",
+        "architectural_instructions"
+      ]
+    },
+    "dispatch_domain": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["capacity", "evidence"],
+      "properties": {
+        "capacity": {
+          "$ref": "#/$defs/positive_integer_or_measure"
+        },
+        "evidence": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/identifier"
+          }
+        },
+        "notes": {
+          "type": "string"
+        }
+      }
+    },
+    "scheduler_partition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "entries", "enqueue_width", "execution_units"],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "kind": {
+          "type": "string",
+          "enum": ["scalar", "vector_compute", "vector_memory", "matrix"]
+        },
+        "entries": {
+          "$ref": "#/$defs/positive_integer_or_measure"
+        },
+        "enqueue_width": {
+          "$ref": "#/$defs/positive_integer_or_measure"
+        },
+        "execution_units": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/identifier"
+          }
+        },
+        "notes": {
+          "type": "string"
+        }
+      }
+    },
+    "execution_unit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scheduler_partition", "functional_units"],
+      "properties": {
+        "scheduler_partition": {
+          "$ref": "#/$defs/identifier"
+        },
+        "functional_units": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/identifier"
+          }
+        },
+        "vector_read_domain": {
+          "$ref": "#/$defs/identifier"
+        },
+        "vector_writeback_domain": {
+          "$ref": "#/$defs/identifier"
+        },
+        "notes": {
+          "type": "string"
+        }
+      }
+    },
+    "register_file": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "logical_registers",
+        "physical_registers",
+        "width_bits",
+        "read_ports",
+        "writeback_ports"
+      ],
+      "properties": {
+        "logical_registers": {
+          "$ref": "#/$defs/positive_integer_or_measure"
+        },
+        "physical_registers": {
+          "$ref": "#/$defs/positive_integer_or_measure"
+        },
+        "width_bits": {
+          "$ref": "#/$defs/positive_integer_or_measure"
+        },
+        "read_ports": {
+          "$ref": "#/$defs/positive_integer_or_measure"
+        },
+        "writeback_ports": {
+          "$ref": "#/$defs/positive_integer_or_measure"
+        },
+        "read_domains": {
+          "type": "object",
+          "propertyNames": {
+            "$ref": "#/$defs/identifier"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/register_port_domain"
+          }
+        },
+        "writeback_domains": {
+          "type": "object",
+          "propertyNames": {
+            "$ref": "#/$defs/identifier"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/register_port_domain"
+          }
+        },
+        "notes": {
+          "type": "string"
+        }
+      }
+    },
+    "register_port_domain": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["port_count", "arbitration_capacity", "execution_units"],
+      "properties": {
+        "port_count": {
+          "$ref": "#/$defs/positive_integer_or_measure"
+        },
+        "arbitration_capacity": {
+          "$ref": "#/$defs/positive_integer_or_measure"
+        },
+        "execution_units": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/identifier"
+          }
+        },
+        "notes": {
+          "type": "string"
+        }
+      }
+    },
+    "vector_memory_backend": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "load_pipelines",
+        "store_pipelines",
+        "source_input_width",
+        "instruction_writeback_width",
+        "max_unit_stride_flows",
+        "load_merge_buffer_entries",
+        "store_merge_buffer_entries"
+      ],
+      "properties": {
+        "declared_vls_queue_entries": {
+          "$ref": "#/$defs/positive_integer_or_measure"
+        },
+        "declared_vls_queue_connected": {
+          "type": "boolean"
+        },
+        "load_pipelines": {
+          "$ref": "#/$defs/positive_integer_or_measure"
+        },
+        "store_pipelines": {
+          "$ref": "#/$defs/positive_integer_or_measure"
+        },
+        "source_input_width": {
+          "$ref": "#/$defs/positive_integer_or_measure"
+        },
+        "instruction_writeback_width": {
+          "$ref": "#/$defs/positive_integer_or_measure"
+        },
+        "max_unit_stride_flows": {
+          "$ref": "#/$defs/positive_integer_or_measure"
+        },
+        "load_merge_buffer_entries": {
+          "$ref": "#/$defs/positive_integer_or_measure"
+        },
+        "store_merge_buffer_entries": {
+          "$ref": "#/$defs/positive_integer_or_measure"
+        },
+        "notes": {
+          "type": "string"
+        }
+      }
+    },
+    "rename_backend": {
+      "type": "object",
+      "description": "Optional profile-driven physical-register rename/free-list model. Omitted profiles retain the legacy behavior.",
+      "additionalProperties": false,
+      "required": [
+        "enabled",
+        "free_lists",
+        "allocation_width",
+        "release_width",
+        "release_delay_cycles",
+        "availability_delay_cycles",
+        "guard_entries",
+        "policy"
+      ],
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "free_lists": {
+          "type": "object",
+          "minProperties": 1,
+          "propertyNames": {
+            "$ref": "#/$defs/identifier"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/rename_free_list"
+          }
+        },
+        "allocation_width": {
+          "$ref": "#/$defs/positive_integer_or_measure"
+        },
+        "release_width": {
+          "$ref": "#/$defs/positive_integer_or_measure"
+        },
+        "release_delay_cycles": {
+          "$ref": "#/$defs/number_or_measure"
+        },
+        "availability_delay_cycles": {
+          "$ref": "#/$defs/number_or_measure"
+        },
+        "guard_entries": {
+          "$ref": "#/$defs/nonnegative_integer_or_measure"
+        },
+        "policy": {
+          "type": "string",
+          "enum": ["all_files_must_be_ready", "any_file_may_be_ready"]
+        },
+        "evidence": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/identifier"
+          }
+        },
+        "notes": {
+          "type": "string"
+        }
+      }
+    },
+    "rename_free_list": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["free_entries"],
+      "properties": {
+        "free_entries": {
+          "$ref": "#/$defs/positive_integer_or_measure"
+        },
+        "notes": {
+          "type": "string"
+        }
+      }
+    },
+    "vector_dependency_policy": {
+      "type": "object",
+      "description": "Optional semantic vector readiness rules. The generic backend applies these rules only when configured; omitted policies preserve legacy behavior.",
+      "additionalProperties": false,
+      "required": ["evidence"],
+      "anyOf": [
+        {"required": ["vector_state"]},
+        {"required": ["old_destination"]}
+      ],
+      "properties": {
+        "vector_state": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["registers", "wait_execution_kinds"],
+          "properties": {
+            "registers": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": {
+                "$ref": "#/$defs/identifier"
+              }
+            },
+            "wait_execution_kinds": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": {
+                "$ref": "#/$defs/resource_kind"
+              }
+            }
+          }
+        },
+        "old_destination": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["mode", "wait_execution_kinds"],
+          "properties": {
+            "mode": {
+              "type": "string",
+              "enum": ["disabled", "semantic"]
+            },
+            "wait_execution_kinds": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": {
+                "$ref": "#/$defs/resource_kind"
+              }
+            },
+            "implicit_execution_kinds": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "description": "Execution kinds for which the implementation retains the previous vector destination as a RAW source even when the ISA operands do not explicitly read vd.",
+              "items": {
+                "$ref": "#/$defs/resource_kind"
+              }
+            }
+          }
+        },
+        "evidence": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/identifier"
+          }
+        },
+        "notes": {
+          "type": "string"
+        }
+      }
+    },
+    "vector_decomposition_backend": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["register_width_bits", "rules"],
+      "properties": {
+        "register_width_bits": {
+          "$ref": "#/$defs/positive_integer_or_measure"
+        },
+        "rules": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/decomposition_rule"
+          }
+        },
+        "notes": {
+          "type": "string"
+        }
+      }
+    },
+    "decomposition_rule": {
+      "oneOf": [
+        {
+          "type": "integer",
+          "minimum": 1
+        },
+        {
+          "type": "string",
+          "enum": ["lmul", "dynamic", "measure"]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["parts", "prep_uops"],
+          "properties": {
+            "parts": {
+              "oneOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                {
+                  "type": "string",
+                  "enum": ["lmul", "dynamic", "measure"]
+                }
+              ]
+            },
+            "prep_uops": {
+              "type": "object",
+              "minProperties": 1,
+              "propertyNames": {
+                "enum": ["register", "immediate", "fp_register", "default"]
+              },
+              "additionalProperties": {
+                "$ref": "#/$defs/uop"
+              }
+            }
+          }
+        }
+      ]
     },
     "issue_domain": {
       "type": "object",
@@ -334,8 +922,31 @@
         "retire_macro_ops": {
           "$ref": "#/$defs/positive_integer_or_measure"
         },
+        "dispatch_domains": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/identifier"
+          }
+        },
+        "dispatch_domain_demands": {
+          "type": "object",
+          "description": "Optional per-domain macro token demand. Listed dispatch domains default to one token.",
+          "minProperties": 1,
+          "propertyNames": {
+            "$ref": "#/$defs/identifier"
+          },
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
         "vector_decomposition": {
           "$ref": "#/$defs/vector_decomposition"
+        },
+        "rename_allocations": {
+          "$ref": "#/$defs/rename_allocations"
         },
         "uops": {
           "type": "array",
@@ -431,6 +1042,9 @@
             "minimum": 1
           }
         },
+        "rename_allocations": {
+          "$ref": "#/$defs/rename_allocations"
+        },
         "depends_on": {
           "type": "array",
           "uniqueItems": true,
@@ -445,6 +1059,18 @@
         "notes": {
           "type": "string"
         }
+      }
+    },
+    "rename_allocations": {
+      "type": "object",
+      "description": "Physical rename free-list entries allocated by an instruction or one execution uop. Values are entry counts.",
+      "minProperties": 1,
+      "propertyNames": {
+        "$ref": "#/$defs/identifier"
+      },
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": 1
       }
     },
     "scalar_control_fit": {
@@ -602,6 +1228,15 @@
         "shared_by_cores": {
           "$ref": "#/$defs/positive_integer_or_measure"
         },
+        "banks": {
+          "$ref": "#/$defs/positive_integer_or_measure"
+        },
+        "data_banks": {
+          "$ref": "#/$defs/positive_integer_or_measure"
+        },
+        "sets_per_bank": {
+          "$ref": "#/$defs/positive_integer_or_measure"
+        },
         "notes": {
           "type": "string"
         }
@@ -679,7 +1314,14 @@
         },
         "kind": {
           "type": "string",
-          "enum": ["vendor_document", "research_paper", "measurement", "assumption"]
+          "enum": [
+            "vendor_document",
+            "research_paper",
+            "source_code",
+            "generated_configuration",
+            "measurement",
+            "assumption"
+          ]
         },
         "title": {
           "type": "string",
@@ -695,6 +1337,10 @@
         },
         "command": {
           "type": "string"
+        },
+        "revision": {
+          "type": "string",
+          "minLength": 7
         },
         "notes": {
           "type": "string"

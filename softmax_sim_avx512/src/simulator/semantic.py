@@ -18,7 +18,9 @@ SEMANTIC_EXECUTION_KINDS: dict[str, frozenset[str]] = {
     "scalar_move": frozenset({"scalar_move", "scalar_alu"}),
     "branch": frozenset({"branch"}),
     "return": frozenset({"return", "branch"}),
-    "vector_config": frozenset({"vector_config", "vector_integer"}),
+    "vector_config": frozenset(
+        {"vector_config", "vector_control", "vector_integer"}
+    ),
     "address_generation": frozenset({"address_generation"}),
     "vector_load": frozenset({"load_data"}),
     "vector_store": frozenset({"store_data"}),

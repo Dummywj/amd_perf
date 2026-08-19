@@ -601,6 +601,10 @@
     "vector_memory_backend": {
       "type": "object",
       "additionalProperties": false,
+      "dependentRequired": {
+        "boundary_bytes": ["issue_cycles_per_flow"],
+        "issue_cycles_per_flow": ["boundary_bytes"]
+      },
       "required": [
         "load_pipelines",
         "store_pipelines",
@@ -637,6 +641,56 @@
         },
         "store_merge_buffer_entries": {
           "$ref": "#/$defs/positive_integer_or_measure"
+        },
+        "issue_order": {
+          "type": "string",
+          "enum": ["any", "oldest", "oldest_same_kind"]
+        },
+        "service_capacity": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "load": {
+              "$ref": "#/$defs/positive_integer_or_measure"
+            },
+            "store": {
+              "$ref": "#/$defs/positive_integer_or_measure"
+            }
+          },
+          "minProperties": 1,
+          "description": "Maximum vector-memory accesses occupying downstream service independently for load and store. This is distinct from address-level internal flow splitting."
+        },
+        "store_completion_cycles": {
+          "$ref": "#/$defs/number_or_measure"
+        },
+        "service_cycles": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "load": {
+              "$ref": "#/$defs/number_or_measure"
+            },
+            "store": {
+              "$ref": "#/$defs/number_or_measure"
+            }
+          },
+          "minProperties": 1
+        },
+        "boundary_bytes": {
+          "$ref": "#/$defs/positive_integer_or_measure",
+          "description": "Address boundary used to split one vector memory access into internal flows. This policy is inert when the split-policy fields are omitted."
+        },
+        "issue_cycles_per_flow": {
+          "$ref": "#/$defs/number_or_measure",
+          "description": "Load/store aggregate split-lane issue occupancy contributed by each internal flow. The flow count is capped by max_unit_stride_flows."
+        },
+        "evidence": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/identifier"
+          }
         },
         "notes": {
           "type": "string"

@@ -429,11 +429,19 @@ backend:
     max_unit_stride_flows: 2
     load_merge_buffer_entries: 16
     store_merge_buffer_entries: 16
+    boundary_bytes: 16
+    issue_cycles_per_flow: 1
+    evidence: [xsai-vector-memory, xsai-vset-vlsu-rtl-2026-08-20]
     notes: >-
-      VlsQueueSize is declared as eight but has no consumer in this source
-      revision, so it is not an effective queue capacity. The remaining values
-      are source-visible structural parameters; split, replay, merge and
-      cache-service timing remain outside the current generic event backend.
+      Unit-stride accesses aligned to the 128-bit VLSU boundary use one flow;
+      an address crossing that boundary is conservatively represented by two
+      split-lane issue slots. The boundary is source-supported. The one-cycle
+      per-flow occupancy is a low-confidence effective default: the 13-case
+      aligned/offset matrix is clean but also changes DCache bank access patterns,
+      so it cannot identify a physical flow service time. One semantic access
+      still owns one merge-buffer entry. Queue pressure, replay, completion
+      service and conditional oldest ordering remain uncalibrated and are
+      deliberately not enabled here.
   vector_decomposition:
     register_width_bits: 128
     rules:
@@ -919,6 +927,25 @@ metadata:
         binary=b70586383ec58f12dc1241592edc83c48b448f95f274db4d6ec917363ee263d8;
         elf=62a6d4a5913673e3b92c4529f86851d83c7ad3175ead4725cc6f561ee027cb5e;
         disassembly=728bcaab301ef7dee536fca7bf17b56315cdef6347b317e2966c8876f1c039ca.
+    - id: xsai-vset-vlsu-rtl-2026-08-20
+      kind: measurement
+      title: XSAI VSET/VL/VLSU directed RTL matrix
+      uri: ../artifacts/xsai/vset_gap/rtl/summary.csv
+      accessed_on: "2026-08-20"
+      command: xsai/vset_gap/scripts/run_rtl.sh
+      revision: 04909692a1cdc6b9165b95c7ea83b94bdc01ab39
+      notes: >-
+        Clean DefaultMatrixConfig run with 13 directed cases x 5 samples and
+        64 iterations. Gates: XSAI_VSET_DONE=PASS, GOOD_TRAP, all 65 samples
+        PASS/CLEAN, CUTE activity=0, L1D/DTLB misses=0. Hashes:
+        rtl.log=e3ab1612fff430a1ff3b010a5ed305e3cb99f6eaad1aaeba72211f2ec6093e8e;
+        summary.csv=eb09dfb36f9f6240aee9ed5dc1ab6bb8f7132fa3d1493607bc2ec06d229441d0;
+        samples.csv=20527cb5500cbe7d802748270eab3bf0ec4c50674507332b4c77bc7ee223a8f1;
+        result_metadata.json=6706aac6475b95b5046d5a8f7166827c31561bf8aa9e7ca718a083c6050d80f3;
+        binary=ca422aedd7332f1bdf827ce349c61b3367f9aa0578ec5260cf85e72d02403299;
+        elf=c9b6d1cadba1968728125ab661ac54703f9a209c4765c9f30d1b72ef89d72f09;
+        disassembly=976cf6feeb56807d1c42ec79f4470fb0e62a9d0dcdfc3ed1af22c1ea6238d022.
+
   notes: >-
     Source revision and DefaultMatrixConfig are frozen for this draft. No file
     under xsai-env was modified while extracting the profile. This profile does
@@ -958,6 +985,14 @@ evidence:
     sources: [xsai-core-parameters, xsai-vector-memory]
     confidence: high
     notes: Structural limits only, not service latency or throughput.
+  - parameter: backend.vector_memory.flow_split
+    sources: [xsai-vector-memory, xsai-vset-vlsu-rtl-2026-08-20]
+    confidence: low
+    notes: >-
+      VSplit proves the aligned 128-bit versus split-flow distinction. The
+      directed matrix is clean but changes cache-bank placement between aligned
+      and offset streams, so issue_cycles_per_flow remains an effective default,
+      not a uniquely measured physical service time.
   - parameter: backend.vector_decomposition
     sources: [xsai-uop-info]
     confidence: medium

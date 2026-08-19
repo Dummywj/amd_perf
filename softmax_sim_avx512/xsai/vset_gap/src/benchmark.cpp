@@ -20,6 +20,12 @@ void xsai_vg_keep_vl_lfs(const float*, float*, size_t);
 void xsai_vg_vlmax_lfs(const float*, float*, size_t);
 void xsai_vg_outside_lfs(const float*, float*, size_t);
 void xsai_vg_regular_load(const float*, float*, size_t);
+void xsai_vg_outside_load(const float*, float*, size_t);
+void xsai_vg_load_stream_1(const float*, float*, size_t);
+void xsai_vg_load_stream_2(const float*, float*, size_t);
+void xsai_vg_load_stream_4(const float*, float*, size_t);
+void xsai_vg_aligned_load_stream_2(const float*, float*, size_t);
+void xsai_vg_aligned_load_stream_4(const float*, float*, size_t);
 void xsai_vg_regular_compute(const float*, float*, size_t);
 void xsai_vg_regular_store(const float*, float*, size_t);
 }
@@ -32,7 +38,13 @@ constexpr size_t kArenaElements = 2048;
 constexpr size_t kL1DBytes = 64 * 1024;
 constexpr size_t kElementsPerIteration = 4;
 
-enum class ResultKind { kLoadFmaStore, kLoadOnly, kComputeOnly, kStoreOnly };
+enum class ResultKind {
+  kLoadFmaStore,
+  kLoadOnly,
+  kLoadStreams,
+  kComputeOnly,
+  kStoreOnly
+};
 
 struct BenchSpec {
   const char* name;
@@ -40,23 +52,37 @@ struct BenchSpec {
   const char* consumer;
   BenchFunction function;
   ResultKind result_kind;
+  size_t streams;
+  bool separated_streams;
 };
 
 const BenchSpec kBenches[] = {
     {"regular_lfs", "rd_rs1", "load_fma_store", xsai_vg_regular_lfs,
-     ResultKind::kLoadFmaStore},
+     ResultKind::kLoadFmaStore, 1, false},
     {"keep_vl_lfs", "x0_x0", "load_fma_store", xsai_vg_keep_vl_lfs,
-     ResultKind::kLoadFmaStore},
+     ResultKind::kLoadFmaStore, 1, false},
     {"vlmax_lfs", "rd_x0", "load_fma_store", xsai_vg_vlmax_lfs,
-     ResultKind::kLoadFmaStore},
+     ResultKind::kLoadFmaStore, 1, false},
     {"outside_lfs", "outside", "load_fma_store", xsai_vg_outside_lfs,
-     ResultKind::kLoadFmaStore},
+     ResultKind::kLoadFmaStore, 1, false},
     {"regular_load", "rd_rs1", "load_only", xsai_vg_regular_load,
-     ResultKind::kLoadOnly},
+     ResultKind::kLoadOnly, 1, false},
+    {"outside_load", "outside", "load_only", xsai_vg_outside_load,
+     ResultKind::kLoadOnly, 1, false},
+    {"load_stream_1", "rd_rs1", "load_stream", xsai_vg_load_stream_1,
+     ResultKind::kLoadStreams, 1, false},
+    {"load_stream_2", "rd_rs1", "load_stream", xsai_vg_load_stream_2,
+     ResultKind::kLoadStreams, 2, false},
+    {"load_stream_4", "rd_rs1", "load_stream", xsai_vg_load_stream_4,
+     ResultKind::kLoadStreams, 4, false},
+    {"aligned_load_stream_2", "rd_rs1", "load_stream",
+     xsai_vg_aligned_load_stream_2, ResultKind::kLoadStreams, 2, true},
+    {"aligned_load_stream_4", "rd_rs1", "load_stream",
+     xsai_vg_aligned_load_stream_4, ResultKind::kLoadStreams, 4, true},
     {"regular_compute", "rd_rs1", "compute_only", xsai_vg_regular_compute,
-     ResultKind::kComputeOnly},
+     ResultKind::kComputeOnly, 1, false},
     {"regular_store", "rd_rs1", "store_only", xsai_vg_regular_store,
-     ResultKind::kStoreOnly},
+     ResultKind::kStoreOnly, 1, false},
 };
 
 union FloatBits {
@@ -137,6 +163,23 @@ bool CheckResult(const BenchSpec& spec, size_t iterations) {
           return false;
       }
       return true;
+    case ResultKind::kLoadStreams:
+      for (size_t stream = 0; stream < spec.streams; ++stream) {
+        for (size_t lane = 0; lane < kElementsPerIteration; ++lane) {
+          const size_t stream_offset =
+              spec.separated_streams
+                  ? stream * iterations * kElementsPerIteration
+                  : stream;
+          const size_t input_index = stream_offset + 8 +
+                                     (iterations - 1) * kElementsPerIteration +
+                                     lane;
+          const size_t output_index = stream * kElementsPerIteration + lane;
+          if (!NearlyEqual(xsai_vset_gap_output[output_index],
+                           xsai_vset_gap_input[input_index]))
+            return false;
+        }
+      }
+      return true;
     case ResultKind::kComputeOnly:
       for (size_t lane = 0; lane < kElementsPerIteration; ++lane) {
         float expected = xsai_vset_gap_input[8 + lane];
@@ -202,16 +245,19 @@ bool RunBench(const BenchSpec& spec) {
         spec.result_kind == ResultKind::kLoadOnly ||
                 spec.result_kind == ResultKind::kComputeOnly
             ? kElementsPerIteration
-            : iterations * kElementsPerIteration;
+            : spec.result_kind == ResultKind::kLoadStreams
+                  ? spec.streams * kElementsPerIteration
+                  : iterations * kElementsPerIteration;
     printf(
         "XSAI_VSET_RESULT name=%s form=%s consumer=%s sample=%d "
         "iterations=%lu raw_cycles=%lu empty_cycles=%lu cycles=%lu "
-        "checksum=0x%lx status=%s\n",
+        "streams=%lu checksum=0x%lx status=%s\n",
         spec.name, spec.form, spec.consumer, sample,
         static_cast<unsigned long>(iterations),
         static_cast<unsigned long>(raw_cycles),
         static_cast<unsigned long>(empty_cycles),
         static_cast<unsigned long>(cycles),
+        static_cast<unsigned long>(spec.streams),
         static_cast<unsigned long>(OutputChecksum(output_count)),
         sample_passed ? "PASS" : "FAIL");
     PrintHpmAudit(spec.name, iterations, sample, hpm_delta);

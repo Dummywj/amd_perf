@@ -17,8 +17,30 @@ CASE_SPECS = {
     "vlmax_lfs": ("rd_x0", "load_fma_store"),
     "outside_lfs": ("outside", "load_fma_store"),
     "regular_load": ("rd_rs1", "load_only"),
+    "outside_load": ("outside", "load_only"),
+    "load_stream_1": ("rd_rs1", "load_stream"),
+    "load_stream_2": ("rd_rs1", "load_stream"),
+    "load_stream_4": ("rd_rs1", "load_stream"),
+    "aligned_load_stream_2": ("rd_rs1", "load_stream"),
+    "aligned_load_stream_4": ("rd_rs1", "load_stream"),
     "regular_compute": ("rd_rs1", "compute_only"),
     "regular_store": ("rd_rs1", "store_only"),
+}
+
+PREVIOUS_CASE_SPECS = {
+    name: spec for name, spec in CASE_SPECS.items()
+    if name not in {"aligned_load_stream_2", "aligned_load_stream_4"}
+}
+LEGACY_CASE_SPECS = {
+    name: spec for name, spec in PREVIOUS_CASE_SPECS.items()
+    if name not in {"outside_load", "load_stream_1", "load_stream_2", "load_stream_4"}
+}
+STREAM_COUNTS = {
+    "load_stream_1": 1,
+    "load_stream_2": 2,
+    "load_stream_4": 4,
+    "aligned_load_stream_2": 2,
+    "aligned_load_stream_4": 4,
 }
 
 
@@ -61,7 +83,14 @@ def validate(
         raise ValueError("missing or unsupported XSAI_VSET_META format")
     if metadata.get("hpm_audit") != "1":
         raise ValueError("missing HPM audit metadata")
-    if int(metadata.get("cases", "0")) != len(CASE_SPECS):
+    declared_cases = int(metadata.get("cases", "0"))
+    if declared_cases == len(CASE_SPECS):
+        case_specs = CASE_SPECS
+    elif declared_cases == len(PREVIOUS_CASE_SPECS):
+        case_specs = PREVIOUS_CASE_SPECS
+    elif declared_cases == len(LEGACY_CASE_SPECS):
+        case_specs = LEGACY_CASE_SPECS
+    else:
         raise ValueError("case count disagrees with vset-gap parser contract")
     if done.get("status") != "PASS":
         raise ValueError("missing successful XSAI_VSET_DONE marker")
@@ -69,7 +98,7 @@ def validate(
     sample_count = int(metadata["samples"])
     iterations = int(metadata["iterations"])
     expected = {
-        (name, sample) for name in CASE_SPECS for sample in range(sample_count)
+        (name, sample) for name in case_specs for sample in range(sample_count)
     }
     actual = {(sample["name"], int(sample["sample"])) for sample in samples}
     if actual != expected or len(samples) != len(expected):
@@ -86,7 +115,10 @@ def validate(
     malformed = []
     failed = []
     for sample in samples:
-        form, consumer = CASE_SPECS[sample["name"]]
+        if sample["name"] not in case_specs:
+            malformed.append(sample["name"])
+            continue
+        form, consumer = case_specs[sample["name"]]
         if (
             sample.get("form") != form
             or sample.get("consumer") != consumer
@@ -135,6 +167,7 @@ def write_results(
                 "name": sample["name"],
                 "form": sample["form"],
                 "consumer": sample["consumer"],
+                "streams": int(sample.get("streams", STREAM_COUNTS.get(sample["name"], 1))),
                 "sample": int(sample["sample"]),
                 "iterations": iterations,
                 "raw_cycles": int(sample["raw_cycles"]),
@@ -177,6 +210,7 @@ def write_results(
                 "name": name,
                 "form": case_rows[0]["form"],
                 "consumer": case_rows[0]["consumer"],
+                "streams": case_rows[0]["streams"],
                 "samples": len(case_rows),
                 "clean_samples": len(clean_cycles),
                 "excluded_samples": len(case_rows) - len(clean_cycles),

@@ -69,6 +69,55 @@ class ParseResultsTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "functional/HPM failures"):
             MODULE.validate(metadata, samples, hpm, done)
 
+    def test_legacy_seven_case_matrix_remains_accepted(self):
+        lines = complete_log().splitlines()
+        legacy = MODULE.LEGACY_CASE_SPECS
+        lines[0] = lines[0].replace(
+            f"cases={len(MODULE.CASE_SPECS)}", f"cases={len(legacy)}"
+        )
+        lines[-1] = lines[-1].replace(
+            f"cases={len(MODULE.CASE_SPECS)}", f"cases={len(legacy)}"
+        ).replace(
+            f"samples={len(MODULE.CASE_SPECS) * 2}", f"samples={len(legacy) * 2}"
+        )
+        lines = [
+            line for line in lines
+            if not any(
+                f"name={name} " in line or f"scope={name} " in line
+                for name in {
+                    "outside_load",
+                    "load_stream_1",
+                    "load_stream_2",
+                    "load_stream_4",
+                    "aligned_load_stream_2",
+                    "aligned_load_stream_4",
+                }
+            )
+        ]
+        metadata, samples, hpm, done = MODULE.parse_log("\n".join(lines))
+        MODULE.validate(metadata, samples, hpm, done)
+
+    def test_previous_eleven_case_matrix_remains_accepted(self):
+        lines = complete_log().splitlines()
+        previous = MODULE.PREVIOUS_CASE_SPECS
+        lines[0] = lines[0].replace(
+            f"cases={len(MODULE.CASE_SPECS)}", f"cases={len(previous)}"
+        )
+        lines[-1] = lines[-1].replace(
+            f"cases={len(MODULE.CASE_SPECS)}", f"cases={len(previous)}"
+        ).replace(
+            f"samples={len(MODULE.CASE_SPECS) * 2}", f"samples={len(previous) * 2}"
+        )
+        lines = [
+            line for line in lines
+            if not any(
+                f"name={name} " in line or f"scope={name} " in line
+                for name in {"aligned_load_stream_2", "aligned_load_stream_4"}
+            )
+        ]
+        metadata, samples, hpm, done = MODULE.parse_log("\n".join(lines))
+        MODULE.validate(metadata, samples, hpm, done)
+
 
 if __name__ == "__main__":
     unittest.main()

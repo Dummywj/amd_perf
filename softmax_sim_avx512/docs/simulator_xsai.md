@@ -54,7 +54,8 @@ CUTE 不出现在资源拓扑中，反汇编审计和 timed-region HPM 共同验
 所有生成物均写入当前项目的 `artifacts/xsai/`。可复现命令、DRAMSim3 构建前置、
 超时处理、日志验收和 CSV 字段见 `docs/xsai_sim.md`。裸机/NEMU 门禁、RTL emulator
 构建和正式无波形 difftest 均已通过；2026-08-19 的 41 个微基准 case（每 case 5 次）
-与 12 个 kernel x 3 个 N 均为 clean，CUTE 活动和 L1D/DTLB miss 均为 0。采集证据已
+与 12 个 kernel x 3 个 N 均为 clean，CUTE 活动和 L1D/DTLB miss 均为 0。另有 13 个
+VSET/VL/VLSU 定向 case x 5 样本通过同样门禁，采集证据已
 写入 profile，但后续模拟器差距分析仍在进行。
 
 ## 3. 完成 XSAI 微架构模拟
@@ -73,11 +74,14 @@ scheduler/backend。** 仅替换 Zen 4 profile 确实不足；已经确认的结
 | 标量访存分区 | 标量 load、store-address、store-data 分别进入 LDU0-2、STA0-1、STD0-1 对应的 scheduler/FU；不占用 VLSU0/1 的向量访存资格 |
 | RVV 分解 | 按 LMUL 生成 register flows，按有效字节生成 128-bit memory flows并保留 tail bytes |
 | scalar preparation | vector-scalar 指令先生成一个 profile 选择的 I2V/F2V prep uop，再执行 LMUL compute uop |
+| VLSU address flow | profile 可按访问地址跨 128-bit 边界计算 1/2 个内部 flow，并使用聚合 split-lane 占用；内部 flow 不额外占用 semantic macro/merge entry |
 
 正式 RTL 对齐同时暴露了两项尚未覆盖的通用能力：一是普通 `vsetvli` 的标量结果与
 VL 物理写回需要分开可见，后续向量/VLSU consumer 应等待实际 VL 路径；二是 VLSU 的
 oldest/order、split/merge/replay 和完成事件不能只用一个 L1 latency token 代替。这些
-能力可以继续作为 profile-driven policy 加入同一事件后端，semantic uop 不变；只有
+地址 flow split 已加入公共后端并由 13-case 产物做结构性回归；service lifetime、
+bank conflict、merge/replay 和 VL state visibility 仍需进一步的 profile-driven policy。
+这些能力继续复用同一事件后端，semantic uop 不变；只有
 后续证明必须复制 XSAI 的完整 replay/redirect 状态机时，才触发独立后端方案审核。
 
 RVV 前端已解析 `vsetvli` 的 VL/SEW/LMUL，展开 kernel 循环、地址、寄存器依赖和有效
@@ -140,13 +144,14 @@ RTL 导出的 L1D refill/miss 和 TLB miss 计数器为准，timed region 的 de
 一套独立 XSAI 后端时暂停并协商新方案；否则连续执行。最终报告同时列出已解释偏差和
 未解释偏差，不以单一平均误差掩盖失败测试点。
 
-**当前执行状态（2026-08-19）。** profile/schema、bare-metal/NEMU 门禁、HPM 审计、
+**当前执行状态（2026-08-20）。** profile/schema、bare-metal/NEMU 门禁、HPM 审计、
 RVV 动态前端，以及包含复杂 decode 入口、dispatch/ROB 分账和标量访存分区的公共后端
 capability 已完成。正式无波形 RTL difftest 采集与验收完成，形成 41 个微基准 case x 5
-和 12 kernel x 3 N 的 clean 产物；关键 hash 与门禁记录在 profile measurement source
-中。当前 36 点 kernel 基线 MAPE 为 **47.09%**，只有 FMA 类接近（约 2%--3% 误差），
-其余类别仍显示明显通用后端差距。普通 `v8` 的 directed load/load-use RTL 结果已经
-排除“统一 16-cycle vector load”假设；现有 vset 微基准又没有覆盖真实 kernel 的
-逐迭代 `vsetvli a5,a5 -> VL writeback -> vector/VLSU consumer` 路径。下一步先补齐这组
-定向证据和通用 VL/VLSU policy，再重新评估 36 点矩阵。该结果不是对齐完成声明；
+和 12 kernel x 3 N 的 clean 产物；另有 13-case VSET/VL/VLSU 矩阵，关键 hash 与门禁记录
+在 profile measurement source 中。当前 36 点 kernel 基线 MAPE 为 **47.04%**，13-case
+定向矩阵的通用后端 MAPE 为 **47.94%**；只有 FMA/compute-only 接近，其余 load 路径
+仍显示明显差距。对齐流结果还受到 DCache bank 访问模式影响，不能用来唯一反演 flow
+service 周期。普通 `v8` 的 directed load/load-use RTL 结果已经排除“统一 16-cycle vector
+load”假设；下一步应补齐真实逐迭代 `vsetvli a5,a5 -> VL writeback -> vector/VLSU
+consumer` 的状态可见性与 merge/replay 证据，再重新评估 36 点矩阵。该结果不是对齐完成声明；
 profile 仍为 `draft`，不得用 kernel 误差反向修改已测参数。

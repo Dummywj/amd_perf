@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compare the seven XSAI vset-gap RTL cases with the generic simulator."""
+"""Compare the XSAI vset-gap RTL cases with the generic simulator."""
 
 from __future__ import annotations
 
@@ -22,6 +22,12 @@ CASE_SPECS = (
     ("vlmax_lfs", "xsai_vg_vlmax_lfs", 65, (3, 1, 1), 2080),
     ("outside_lfs", "xsai_vg_outside_lfs", 1, (3, 1, 1), 2080),
     ("regular_load", "xsai_vg_regular_load", 65, (1, 0, 1), 1040),
+    ("outside_load", "xsai_vg_outside_load", 1, (1, 0, 1), 1040),
+    ("load_stream_1", "xsai_vg_load_stream_1", 65, (1, 0, 1), 1040),
+    ("load_stream_2", "xsai_vg_load_stream_2", 65, (2, 0, 2), 2080),
+    ("load_stream_4", "xsai_vg_load_stream_4", 65, (4, 0, 4), 4160),
+    ("aligned_load_stream_2", "xsai_vg_aligned_load_stream_2", 65, (2, 0, 2), 2080),
+    ("aligned_load_stream_4", "xsai_vg_aligned_load_stream_4", 65, (4, 0, 4), 4160),
     ("regular_compute", "xsai_vg_regular_compute", 65, (3, 1, 1), 64),
     ("regular_store", "xsai_vg_regular_store", 65, (1, 0, 1), 1040),
 )
@@ -32,6 +38,12 @@ EXPECTED_FORMS = {
     "vlmax_lfs": (("t0", "zero"), ("t0", "zero")),
     "outside_lfs": (("t0", "zero"),),
     "regular_load": (("t0", "zero"), ("t0", "a4")),
+    "outside_load": (("t0", "zero"),),
+    "load_stream_1": (("t0", "zero"), ("t0", "a4")),
+    "load_stream_2": (("t0", "zero"), ("t0", "a5")),
+    "load_stream_4": (("t0", "zero"), ("t0", "t2")),
+    "aligned_load_stream_2": (("t0", "zero"), ("t0", "a5")),
+    "aligned_load_stream_4": (("t0", "zero"), ("t0", "t2")),
     "regular_compute": (("t0", "zero"), ("t0", "a4")),
     "regular_store": (("t0", "zero"), ("t0", "a4")),
 }

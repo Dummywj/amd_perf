@@ -113,6 +113,9 @@ class Profile:
             referenced.update(
                 str(value) for value in dependency_policy.get("evidence", [])
             )
+        vector_memory = self.backend.get("vector_memory")
+        if vector_memory:
+            referenced.update(str(value) for value in vector_memory.get("evidence", []))
         # Existing v4 recipes may use local equivalence labels in addition to
         # centralized metadata source ids, so recipe evidence remains free-form.
         fit = self.data.get("scalar_control_fit")
@@ -259,6 +262,110 @@ class Profile:
                     f"backend.macro_op_accounting.{field} has unsupported basis: "
                     f"{basis!r}"
                 )
+        vector_memory = backend.get("vector_memory", {})
+        if not isinstance(vector_memory, dict):
+            raise ProfileError("backend.vector_memory must be a mapping")
+        issue_order = vector_memory.get("issue_order", "any")
+        valid_issue_orders = {"any", "oldest", "oldest_same_kind"}
+        if issue_order not in valid_issue_orders:
+            raise ProfileError(
+                "backend.vector_memory.issue_order must be 'any', 'oldest', "
+                "or 'oldest_same_kind'"
+            )
+        service_capacity = vector_memory.get("service_capacity")
+        if service_capacity is not None:
+            if not isinstance(service_capacity, dict) or not service_capacity:
+                raise ProfileError(
+                    "backend.vector_memory.service_capacity must be a non-empty mapping"
+                )
+            unknown_kinds = set(service_capacity) - {"load", "store"}
+            if unknown_kinds:
+                raise ProfileError(
+                    "backend.vector_memory.service_capacity has unsupported kinds: "
+                    + ", ".join(sorted(unknown_kinds))
+                )
+            for access_kind, capacity in service_capacity.items():
+                if capacity != "measure" and (
+                    isinstance(capacity, bool)
+                    or not isinstance(capacity, int)
+                    or capacity < 1
+                ):
+                    raise ProfileError(
+                        "backend.vector_memory.service_capacity.%s must be "
+                        "a positive integer, 'measure', or omitted" % access_kind
+                    )
+        store_completion = vector_memory.get("store_completion_cycles", 0)
+        if store_completion != "measure" and (
+            isinstance(store_completion, bool)
+            or not isinstance(store_completion, (int, float))
+            or store_completion < 0
+        ):
+            raise ProfileError(
+                "backend.vector_memory.store_completion_cycles must be "
+                "non-negative, 'measure', or omitted"
+            )
+        service_cycles = vector_memory.get("service_cycles")
+        if service_cycles is not None:
+            if not isinstance(service_cycles, dict) or not service_cycles:
+                raise ProfileError(
+                    "backend.vector_memory.service_cycles must be a non-empty mapping"
+                )
+            unknown_kinds = set(service_cycles) - {"load", "store"}
+            if unknown_kinds:
+                raise ProfileError(
+                    "backend.vector_memory.service_cycles has unsupported kinds: "
+                    + ", ".join(sorted(unknown_kinds))
+                )
+            for access_kind, cycles in service_cycles.items():
+                if cycles != "measure" and (
+                    isinstance(cycles, bool)
+                    or not isinstance(cycles, (int, float))
+                    or cycles < 0
+                ):
+                    raise ProfileError(
+                        "backend.vector_memory.service_cycles.%s must be "
+                        "non-negative, 'measure', or omitted" % access_kind
+                    )
+        split_fields = {
+            "boundary_bytes",
+            "issue_cycles_per_flow",
+        }
+        configured_split_fields = split_fields & set(vector_memory)
+        if configured_split_fields and configured_split_fields != split_fields:
+            missing = split_fields - configured_split_fields
+            raise ProfileError(
+                "backend.vector_memory flow-split policy requires all of: "
+                + ", ".join(sorted(split_fields))
+                + "; missing: "
+                + ", ".join(sorted(missing))
+            )
+        for field in ("boundary_bytes",):
+            value = vector_memory.get(field)
+            if value is not None and (
+                value != "measure"
+                and (
+                    isinstance(value, bool)
+                    or not isinstance(value, int)
+                    or value < 1
+                )
+            ):
+                raise ProfileError(
+                    f"backend.vector_memory.{field} must be a positive integer, "
+                    "'measure', or omitted"
+                )
+        issue_cycles_per_flow = vector_memory.get("issue_cycles_per_flow")
+        if issue_cycles_per_flow is not None and (
+            issue_cycles_per_flow != "measure"
+            and (
+                isinstance(issue_cycles_per_flow, bool)
+                or not isinstance(issue_cycles_per_flow, (int, float))
+                or issue_cycles_per_flow < 0
+            )
+        ):
+            raise ProfileError(
+                "backend.vector_memory.issue_cycles_per_flow must be "
+                "non-negative, 'measure', or omitted"
+            )
         for domain_id, domain in backend.get("dispatch_domains", {}).items():
             capacity = domain.get("capacity")
             if capacity != "measure" and (
@@ -609,6 +716,76 @@ class Profile:
                 "vector_memory": {},
             },
         )
+
+    @property
+    def vector_memory_policy(self) -> dict[str, Any]:
+        """Return optional VLSU flow/order policy; omitted fields are inert."""
+        configured = self.backend.get("vector_memory", {})
+        completion = configured.get("store_completion_cycles", 0)
+        if completion == "measure":
+            self._measurement_required(
+                "backend.vector_memory.store_completion_cycles"
+            )
+        result = {
+            "issue_order": str(configured.get("issue_order", "any")),
+            "store_completion_ticks": self.ticks(completion),
+            "split_lanes": {
+                "load": self._parameter_int(
+                    configured.get("load_pipelines", 1),
+                    "backend.vector_memory.load_pipelines",
+                ),
+                "store": self._parameter_int(
+                    configured.get("store_pipelines", 1),
+                    "backend.vector_memory.store_pipelines",
+                ),
+            },
+        }
+        if "service_capacity" in configured:
+            capacity = configured["service_capacity"]
+            result["service_capacity"] = {
+                str(kind): int(value)
+                for kind, value in capacity.items()
+                if value != "measure"
+            }
+            for kind, value in capacity.items():
+                if value == "measure":
+                    self._measurement_required(
+                        f"backend.vector_memory.service_capacity.{kind}"
+                    )
+        # Omitted service_cycles retain the legacy completion-bound flow token.
+        # An explicitly configured kind separates token service lifetime from
+        # uop completion, including an intentional zero-cycle service.
+        if "service_cycles" in configured:
+            service = configured["service_cycles"]
+            result["service_ticks"] = {
+                str(kind): self.ticks(cycles)
+                for kind, cycles in service.items()
+                if cycles != "measure"
+            }
+            for kind, cycles in service.items():
+                if cycles == "measure":
+                    self._measurement_required(
+                        f"backend.vector_memory.service_cycles.{kind}"
+                    )
+        split_fields = (
+            "boundary_bytes",
+            "issue_cycles_per_flow",
+        )
+        if any(field in configured for field in split_fields):
+            for field in split_fields:
+                if configured[field] == "measure":
+                    self._measurement_required(f"backend.vector_memory.{field}")
+            result["flow_split"] = {
+                "boundary_bytes": int(configured["boundary_bytes"]),
+                "max_flows_per_access": self._parameter_int(
+                    configured.get("max_unit_stride_flows", 1),
+                    "backend.vector_memory.max_unit_stride_flows",
+                ),
+                "issue_ticks_per_flow": self.ticks(
+                    configured["issue_cycles_per_flow"]
+                ),
+            }
+        return result
 
     @property
     def vector_dependency_policy(self) -> dict[str, Any]:

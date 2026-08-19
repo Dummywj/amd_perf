@@ -7,7 +7,7 @@
 - 模式：`simulate`
 - RTL 汇总：`/nfs/home/yuweijie/project/amd_perf/softmax_sim_avx512/artifacts/xsai/rtl/summary.csv`
 - RTL 点数：36，模拟点数：36，拟合有效点数：36
-- Profile：`xsai-default-matrix-rvv`（`0c2626b95c43d3786cef9c805daa8cb648ef98b8353d935f6a132b4eb160181c`）
+- Profile：`xsai-default-matrix-rvv`（`d70f29ca814e0460fac5ebcf8e75861fe5a229c1e4537b2bff1c7d9f5a11c5f2`）
 - 执行模型：乱序、Hot-L1
 - 缓存证据：clean=36，contaminated=0，unknown=0。后两类不进入拟合统计。
 

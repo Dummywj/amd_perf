@@ -97,6 +97,162 @@ xsai_vg_regular_load:
   ret
   .size xsai_vg_regular_load, .-xsai_vg_regular_load
 
+  .globl xsai_vg_outside_load
+  .type xsai_vg_outside_load, @function
+xsai_vg_outside_load:
+  vsetvli t0, zero, e32, m1, ta, ma
+  addi a0, a0, 32
+  addi t3, a1, 0
+  slli a4, a2, 2
+  .p2align 4
+1:
+  vle32.v v8, (a0)
+  slli t1, t0, 2
+  add a0, a0, t1
+  sub a4, a4, t0
+  addi a2, a2, -1
+  bnez a2, 1b
+  vse32.v v8, (t3)
+  ret
+  .size xsai_vg_outside_load, .-xsai_vg_outside_load
+
+  .globl xsai_vg_load_stream_1
+  .type xsai_vg_load_stream_1, @function
+xsai_vg_load_stream_1:
+  vsetvli t0, zero, e32, m1, ta, ma
+  addi a0, a0, 32
+  slli a4, a2, 2
+  .p2align 4
+1:
+  vsetvli t0, a4, e32, m1, ta, ma
+  vle32.v v8, (a0)
+  slli t1, t0, 2
+  add a0, a0, t1
+  sub a4, a4, t0
+  addi a2, a2, -1
+  bnez a2, 1b
+  vse32.v v8, (a1)
+  ret
+  .size xsai_vg_load_stream_1, .-xsai_vg_load_stream_1
+
+  .globl xsai_vg_load_stream_2
+  .type xsai_vg_load_stream_2, @function
+xsai_vg_load_stream_2:
+  vsetvli t0, zero, e32, m1, ta, ma
+  addi a0, a0, 32
+  addi a3, a0, 4
+  addi a4, a1, 16
+  slli a5, a2, 2
+  .p2align 4
+1:
+  vsetvli t0, a5, e32, m1, ta, ma
+  vle32.v v8, (a0)
+  vle32.v v9, (a3)
+  slli t1, t0, 2
+  add a0, a0, t1
+  add a3, a3, t1
+  sub a5, a5, t0
+  addi a2, a2, -1
+  bnez a2, 1b
+  vse32.v v8, (a1)
+  vse32.v v9, (a4)
+  ret
+  .size xsai_vg_load_stream_2, .-xsai_vg_load_stream_2
+
+  .globl xsai_vg_load_stream_4
+  .type xsai_vg_load_stream_4, @function
+xsai_vg_load_stream_4:
+  vsetvli t0, zero, e32, m1, ta, ma
+  addi a0, a0, 32
+  addi a3, a0, 4
+  addi a4, a0, 8
+  addi a5, a0, 12
+  slli t2, a2, 2
+  addi t3, a1, 16
+  addi t4, a1, 32
+  addi t5, a1, 48
+  .p2align 4
+1:
+  vsetvli t0, t2, e32, m1, ta, ma
+  vle32.v v8, (a0)
+  vle32.v v9, (a3)
+  vle32.v v10, (a4)
+  vle32.v v11, (a5)
+  slli t1, t0, 2
+  add a0, a0, t1
+  add a3, a3, t1
+  add a4, a4, t1
+  add a5, a5, t1
+  sub t2, t2, t0
+  addi a2, a2, -1
+  bnez a2, 1b
+  vse32.v v8, (a1)
+  vse32.v v9, (t3)
+  vse32.v v10, (t4)
+  vse32.v v11, (t5)
+  ret
+  .size xsai_vg_load_stream_4, .-xsai_vg_load_stream_4
+
+  .globl xsai_vg_aligned_load_stream_2
+  .type xsai_vg_aligned_load_stream_2, @function
+xsai_vg_aligned_load_stream_2:
+  vsetvli t0, zero, e32, m1, ta, ma
+  addi a0, a0, 32
+  slli t1, a2, 4
+  add a3, a0, t1
+  addi a4, a1, 16
+  slli a5, a2, 2
+  .p2align 4
+1:
+  vsetvli t0, a5, e32, m1, ta, ma
+  vle32.v v8, (a0)
+  vle32.v v9, (a3)
+  slli t1, t0, 2
+  add a0, a0, t1
+  add a3, a3, t1
+  sub a5, a5, t0
+  addi a2, a2, -1
+  bnez a2, 1b
+  vse32.v v8, (a1)
+  vse32.v v9, (a4)
+  ret
+  .size xsai_vg_aligned_load_stream_2, .-xsai_vg_aligned_load_stream_2
+
+  .globl xsai_vg_aligned_load_stream_4
+  .type xsai_vg_aligned_load_stream_4, @function
+xsai_vg_aligned_load_stream_4:
+  vsetvli t0, zero, e32, m1, ta, ma
+  addi a0, a0, 32
+  slli t1, a2, 4
+  add a3, a0, t1
+  add a4, a3, t1
+  add a5, a4, t1
+  slli t2, a2, 2
+  addi t3, a1, 16
+  addi t4, a1, 32
+  addi t5, a1, 48
+  .p2align 4
+1:
+  vsetvli t0, t2, e32, m1, ta, ma
+  vle32.v v8, (a0)
+  vle32.v v9, (a3)
+  vle32.v v10, (a4)
+  vle32.v v11, (a5)
+  slli t1, t0, 2
+  add a0, a0, t1
+  add a3, a3, t1
+  add a4, a4, t1
+  add a5, a5, t1
+  sub t2, t2, t0
+  addi a2, a2, -1
+  bnez a2, 1b
+  vse32.v v8, (a1)
+  vse32.v v9, (t3)
+  vse32.v v10, (t4)
+  vse32.v v11, (t5)
+  ret
+  .size xsai_vg_aligned_load_stream_4, .-xsai_vg_aligned_load_stream_4
+
   .globl xsai_vg_regular_compute
   .type xsai_vg_regular_compute, @function
 xsai_vg_regular_compute:

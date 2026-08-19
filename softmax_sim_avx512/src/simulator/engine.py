@@ -251,6 +251,21 @@ class Engine:
             for instruction in self.trace.source_trace.get("instructions", [])
             for semantic in instruction.get("semantic_uops", [])
         }
+        self.vector_memory_policy = profile.vector_memory_policy
+        self.vector_memory_inflight: dict[str, set[str]] = {
+            "load": set(),
+            "store": set(),
+        }
+        self.vector_memory_service_heap: list[tuple[int, int, str]] = []
+        self.vector_memory_split_issue_free = {
+            "load": [0] * self.vector_memory_policy.get("split_lanes", {}).get(
+                "load", 1
+            ),
+            "store": [0] * self.vector_memory_policy.get("split_lanes", {}).get(
+                "store", 1
+            ),
+        }
+        self.vector_memory_flow_counts: Counter[int] = Counter()
         self.memory_compute_groups = self._discover_memory_compute_groups()
         self.pending_memory_compute_groups: set[str] = set()
         self.next_dispatch = 0
@@ -320,6 +335,7 @@ class Engine:
             if iteration_guard > max(10000, len(self.trace.uops) * 100):
                 raise SimulatorError("event loop did not converge")
             self._complete(now)
+            self._release_vector_memory_flows(now)
             self._release_rename(now)
             if now % self.tpc == 0:
                 self._dispatch(now)
@@ -434,6 +450,30 @@ class Engine:
                 "eligible_groups": len(self.memory_compute_groups),
                 "peak_pending_groups": self.peaks["memory_compute_pending_groups"],
             },
+            "vector_memory": {
+                "issue_order": self.vector_memory_policy["issue_order"],
+                "service_capacity": self.vector_memory_policy.get(
+                    "service_capacity", {}
+                ),
+                "service_ticks": self.vector_memory_policy.get(
+                    "service_ticks", {}
+                ),
+                "store_completion_ticks": self.vector_memory_policy[
+                    "store_completion_ticks"
+                ],
+                "split_lanes": self.vector_memory_policy["split_lanes"],
+                "peak_inflight_accesses": {
+                    kind: self.peaks[f"vector_memory_inflight_{kind}"]
+                    for kind in ("load", "store")
+                },
+                "flow_split": self.vector_memory_policy.get("flow_split"),
+                "flow_count_accesses": {
+                    str(flow_count): count
+                    for flow_count, count in sorted(
+                        self.vector_memory_flow_counts.items()
+                    )
+                },
+            },
         }
         return SimulationResult(
             execution_model=self.execution_model,
@@ -482,14 +522,82 @@ class Engine:
             if uop.complete_tick is not None:
                 continue
             uop.complete_tick = complete_tick
+            # Legacy profiles bind flow occupancy to completion. Profiles with
+            # service_cycles release the flow token independently below.
+            if self._vector_memory_service_ticks(uop) is None:
+                access_kind = self._vector_memory_access_kind(uop)
+                self.vector_memory_inflight[access_kind].discard(uop.id)
             self.events.append(self._event("complete", complete_tick, uop))
             parent = self.macros[uop.parent_id]
-            if all(self.uops[value].complete_tick is not None for value in parent.uop_ids):
+            if all(
+                self.uops[value].complete_tick is not None
+                for value in parent.uop_ids
+            ):
                 parent.complete_tick = max(
                     self.uops[value].complete_tick or 0 for value in parent.uop_ids
                 )
             changed = True
         return changed
+
+    def _release_vector_memory_flows(self, now: int) -> bool:
+        changed = False
+        while (
+            self.vector_memory_service_heap
+            and self.vector_memory_service_heap[0][0] <= now
+        ):
+            _, _, uop_id = heapq.heappop(self.vector_memory_service_heap)
+            uop = self.uops[uop_id]
+            access_kind = self._vector_memory_access_kind(uop)
+            if uop_id in self.vector_memory_inflight[access_kind]:
+                self.vector_memory_inflight[access_kind].remove(uop_id)
+                changed = True
+        return changed
+
+    def _vector_memory_service_ticks(self, uop: ExecutionUop) -> int | None:
+        if "service_ticks" not in self.vector_memory_policy:
+            return None
+        return self.vector_memory_policy["service_ticks"].get(
+            "load" if uop.kind == "load_data" else "store"
+        )
+
+    @staticmethod
+    def _vector_memory_access_kind(uop: ExecutionUop) -> str:
+        return "load" if uop.kind == "load_data" else "store"
+
+    def _vector_memory_flow_count(self, uop: ExecutionUop) -> int:
+        split = self.vector_memory_policy.get("flow_split")
+        memory = uop.memory
+        if split is None or not memory:
+            return 1
+        address = memory.get("address")
+        byte_count = memory.get("bytes")
+        if (
+            isinstance(address, bool)
+            or not isinstance(address, int)
+            or isinstance(byte_count, bool)
+            or not isinstance(byte_count, int)
+            or byte_count <= 0
+        ):
+            return 1
+        boundary = split["boundary_bytes"]
+        covered = (address % boundary) + byte_count
+        flow_count = (covered + boundary - 1) // boundary
+        return min(flow_count, split["max_flows_per_access"])
+
+    def _reserve_vector_memory_split_issue(
+        self, uop: ExecutionUop, now: int
+    ) -> None:
+        split = self.vector_memory_policy.get("flow_split")
+        if split is None:
+            return
+        flow_count = self._vector_memory_flow_count(uop)
+        self.vector_memory_flow_counts[flow_count] += 1
+        access_kind = self._vector_memory_access_kind(uop)
+        lanes = self.vector_memory_split_issue_free[access_kind]
+        lane = min(range(len(lanes)), key=lambda index: (lanes[index], index))
+        lanes[lane] = (
+            now + flow_count * split["issue_ticks_per_flow"]
+        )
 
     def _dispatch(self, now: int) -> None:
         width = int(self.profile.pipeline["dispatch_macro_ops_per_cycle"])
@@ -965,6 +1073,24 @@ class Engine:
                 # observe instead of treating them as zero-latency fire-and-
                 # forget operations.
                 uop.latency_ticks = max(uop.latency_ticks, access.latency_ticks)
+                if self._is_vector_memory_uop(uop):
+                    if uop.kind == "store_data":
+                        uop.latency_ticks = max(
+                            uop.latency_ticks,
+                            self.vector_memory_policy["store_completion_ticks"],
+                        )
+                    service_ticks = self._vector_memory_service_ticks(uop)
+                    access_kind = self._vector_memory_access_kind(uop)
+                    self.vector_memory_inflight[access_kind].add(uop.id)
+                    self._reserve_vector_memory_split_issue(uop, now)
+                    if service_ticks is not None:
+                        if service_ticks == 0:
+                            self.vector_memory_inflight[access_kind].discard(uop.id)
+                        else:
+                            heapq.heappush(
+                                self.vector_memory_service_heap,
+                                (now + service_ticks, uop.sequence, uop.id),
+                            )
             self.resource_free[resource_id][lane] = now + uop.occupancy_ticks
             if execution_unit is not None:
                 self.execution_unit_free[execution_unit] = (
@@ -1088,6 +1214,11 @@ class Engine:
                     self.execution_unit_free[unit_id] for unit_id in units
                 )
         if uop.kind in {"load_data", "store_data"}:
+            vector_memory_reason, vector_memory_earliest = self._vector_memory_blocker(
+                uop, now
+            )
+            if vector_memory_reason:
+                return vector_memory_reason, vector_memory_earliest
             reason, earliest = self.memory.blocker(uop, now)
             if reason:
                 return reason, earliest
@@ -1122,6 +1253,80 @@ class Engine:
                     now
                 )
             return "execution_unit_busy", self._next_execution_ready_tick(uop, now)
+        return None, now
+
+    def _is_vector_memory_uop(self, uop: ExecutionUop) -> bool:
+        if uop.kind not in {"load_data", "store_data"}:
+            return False
+        # Bound traces normally carry semantic ids, but hand-built and older
+        # traces may only retain the semantic-kind tuple. Keep the policy
+        # generic and avoid silently disabling it for those traces.
+        return any(
+            self.semantic_kind_by_id.get(semantic) in {"vector_load", "vector_store"}
+            for semantic in uop.semantic_ids
+        ) or any(
+            kind in {"vector_load", "vector_store"}
+            for kind in uop.semantic_kinds
+        )
+
+    def _vector_memory_blocker(
+        self, uop: ExecutionUop, now: int
+    ) -> tuple[str | None, int]:
+        if not self._is_vector_memory_uop(uop):
+            return None, now
+        split = self.vector_memory_policy.get("flow_split")
+        if split is not None:
+            access_kind = self._vector_memory_access_kind(uop)
+            split_issue_free = min(
+                self.vector_memory_split_issue_free[access_kind]
+            )
+            if split_issue_free > now:
+                return "vector_memory_split_issue_busy", split_issue_free
+        access_kind = self._vector_memory_access_kind(uop)
+        inflight = self.vector_memory_inflight[access_kind]
+        capacity = self.vector_memory_policy.get("service_capacity", {}).get(
+            access_kind
+        )
+        if capacity is not None and len(inflight) >= capacity:
+            release_ticks = [
+                release_tick
+                for release_tick, _, uop_id in self.vector_memory_service_heap
+                if uop_id in inflight
+            ]
+            release_ticks.extend(
+                self.uops[uop_id].complete_tick
+                if self.uops[uop_id].complete_tick is not None
+                else (
+                    (
+                        self.uops[uop_id].issue_tick
+                        if self.uops[uop_id].issue_tick is not None
+                        else now
+                    )
+                    + self.uops[uop_id].latency_ticks
+                )
+                for uop_id in inflight
+                if self._vector_memory_service_ticks(self.uops[uop_id]) is None
+            )
+            earliest = min(release_ticks)
+            if earliest <= now:
+                earliest = self._next_architectural_cycle_tick(now)
+            return f"vector_memory_{access_kind}_service_busy", earliest
+        issue_order = self.vector_memory_policy["issue_order"]
+        if issue_order in {"oldest", "oldest_same_kind"}:
+            earlier = [
+                candidate
+                for candidate in self.uops.values()
+                if candidate.sequence < uop.sequence
+                and candidate.id in self.unissued_dispatched
+                and self._is_vector_memory_uop(candidate)
+                and (issue_order == "oldest" or candidate.kind == uop.kind)
+                and all(
+                    self.uops[dependency].complete_tick is not None
+                    for dependency in candidate.dependencies
+                )
+            ]
+            if earlier:
+                return f"vector_memory_{issue_order}", math.inf
         return None, now
 
     def _eligible_execution_units(self, uop: ExecutionUop) -> tuple[str, ...]:
@@ -1418,6 +1623,8 @@ class Engine:
         candidates: list[int] = []
         if self.completion_heap:
             candidates.append(self.completion_heap[0][0])
+        if self.vector_memory_service_heap:
+            candidates.append(self.vector_memory_service_heap[0][0])
         if self.rename_pending_releases:
             ready_tick = self.rename_pending_releases[0][0]
             if ready_tick > now:
@@ -1476,6 +1683,9 @@ class Engine:
             self.peaks["memory_compute_pending_groups"],
             len(self.pending_memory_compute_groups),
         )
+        for access_kind, inflight in self.vector_memory_inflight.items():
+            key = f"vector_memory_inflight_{access_kind}"
+            self.peaks[key] = max(self.peaks[key], len(inflight))
 
     @staticmethod
     def _event(kind: str, tick: int, uop: ExecutionUop) -> dict[str, Any]:

@@ -27,6 +27,12 @@ class VsetGapAlignmentTest(unittest.TestCase):
             "vlmax_lfs": 649,
             "outside_lfs": 585,
             "regular_load": 455,
+            "outside_load": 390,
+            "load_stream_1": 453,
+            "load_stream_2": 584,
+            "load_stream_4": 846,
+            "aligned_load_stream_2": 585,
+            "aligned_load_stream_4": 847,
             "regular_compute": 331,
             "regular_store": 456,
         }

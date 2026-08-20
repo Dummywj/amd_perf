@@ -174,7 +174,17 @@ def main() -> int:
     ) as error:
         print(f"simulator: error: {error}", file=sys.stderr)
         return 2
-    print(json.dumps({"cycles": result.cycles, **result.summary}, sort_keys=True))
+    # Keep compatibility with lightweight result stubs used by integrations.
+    backend = getattr(result, "backend", None)
+    if backend is None:
+        profile_backend = getattr(profile, "backend", {})
+        backend = profile_backend.get("execution_model", "zen4")
+    print(
+        json.dumps(
+            {"backend": backend, "cycles": result.cycles, **result.summary},
+            sort_keys=True,
+        )
+    )
     return 0
 
 

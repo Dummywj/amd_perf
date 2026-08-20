@@ -46,11 +46,12 @@ def build_semantic_view_model(
     selected_execution_ids = {uop.id for uop in execution_uops}
     execution_by_semantic: dict[str, list[ExecutionUop]] = defaultdict(list)
     for uop in execution_uops:
-        if len(uop.semantic_ids) != 1:
+        if not uop.semantic_ids:
             raise SemanticViewError(
-                f"{uop.id}: expected exactly one semantic parent, got {uop.semantic_ids}"
+                f"{uop.id}: expected at least one semantic parent"
             )
-        execution_by_semantic[uop.semantic_ids[0]].append(uop)
+        for parent_id in uop.semantic_ids:
+            execution_by_semantic[parent_id].append(uop)
 
     instruction_nodes: list[dict[str, Any]] = []
     semantic_nodes: list[dict[str, Any]] = []
@@ -199,6 +200,7 @@ def build_semantic_view_model(
             "title": "Semantic uop schedule",
             "profile_id": result.trace.profile_id,
             "profile_sha256": result.trace.profile_sha256,
+            "backend": result.backend,
             "execution_model": result.execution_model,
             "cache_mode": result.cache_mode,
             "ticks_per_cycle": result.ticks_per_cycle,

@@ -17,4 +17,4 @@
 | [`simulator_result.md`](simulator_result.md) | Softmax 首轮模拟实现、调度统计和真机对比记录。 |
 | [`simulator_xsai.md`](simulator_xsai.md) | XSAI Core RVV profile、裸机 RTL、后端模型和 kernel 对齐执行计划。 |
 | [`xsai_sim.md`](xsai_sim.md) | XSAI RVV 裸机镜像构建、NEMU/RTL 运行、L1 检查和结果解析流程。 |
-| [`xsai_result.md`](xsai_result.md) | XSAI RTL 与通用 semantic-uop 模拟器的逐 kernel 对齐结果。 |
+| [`xsai_result.md`](xsai_result.md) | XSAI RTL 与独立 XSAI-RVV 后端的逐 kernel 对齐结果。 |

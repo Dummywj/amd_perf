@@ -161,7 +161,7 @@ resources:
 issue_domains: {}
 
 backend:
-  execution_model: generic-token
+  execution_model: xsai-rvv
   macro_op_accounting:
     dispatch_units: max_decoded_or_execution_uops
     rob_entries: architectural_instructions
@@ -486,9 +486,9 @@ backend:
     current ISA-neutral scalar_store semantic is represented by its STD token;
     STA0/STA1 remain explicit for source-topology audit without creating a
     second cache access. This topology intentionally contains no matrix
-    scheduler, CUTE execution unit or matrix resource. Capability testing
-    showed that the shared generic token backend can express the required
-    scheduler, slot and writeback rules; no independent XSAI event engine is used.
+    scheduler, CUTE execution unit or matrix resource. XSAI-RVV now uses its
+    own backend-uop expansion and event loop; the semantic-uop ISA remains
+    shared with Zen4.
 
 recipes:
   "flw:any": &scalar_load_recipe
@@ -871,7 +871,7 @@ metadata:
       notes: >-
         A complex macro is drained into rename uops before the next complex
         macro is accepted; this motivates dispatch-domain and partial-drain
-        modeling in the generic backend.
+        modeling in the dedicated XSAI-RVV backend.
     - id: xsai-vector-memory
       kind: source_code
       title: XSAI vector-memory split and merge implementation

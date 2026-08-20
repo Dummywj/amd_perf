@@ -1,8 +1,8 @@
-# 通用 Uop 事件驱动模拟器
+# Semantic Uop 多后端事件驱动模拟器
 
 本文介绍 `softmax_sim_avx512` 模拟器的设计思想、核心数据结构、顺序/乱序执行模型、内存模型和结果可视化方法。
 
-模拟器的目标不是复刻 Zen 4 的全部隐藏实现，而是在可解释、可校准的 profile 约束下，预测向量 kernel 的 core cycles，并让同一后端以后能够接收 RVV 等其他 ISA 的 uop。
+模拟器以同一套 semantic uop 表达 x86 和 RVV，但不再假设差异很大的微架构必须共享同一套执行后端。Zen 4 和 XSAI-RVV 分别拥有独立事件循环，profile 负责配置各自资源与时序。
 
 ## 1. 总体架构
 
@@ -21,10 +21,10 @@ ISA 前端：解析指令、展开控制流、计算地址、建立依赖
 微架构 profile：recipe、latency、吞吐、资源和内存参数
         |
         v
-动态 execution-uop DAG
+后端选择：Zen4 / XSAI-RVV
         |
         v
-ISA 无关事件驱动后端
+微架构专用 backend-uop DAG 与事件循环
         |
         +--> 总周期和瓶颈统计
         +--> JSONL 事件日志
@@ -33,7 +33,7 @@ ISA 无关事件驱动后端
         +--> 文本时间线
 ```
 
-这条边界最重要的约束是：ISA mnemonic 只允许出现在前端和 recipe 中。调度器不根据 `vmaxps`、`vfmacc.vv` 等指令名写特殊分支。
+这条边界最重要的约束是：semantic uop 始终跨 ISA 保持统一；机器指令拆成多少 backend uop、进入哪些调度队列，则由目标后端决定。调度器不按单个 kernel 写补偿分支。
 
 ## 2. 为什么使用事件驱动模型
 
@@ -155,9 +155,11 @@ vmaxps:memory,zmm,zmm
 
 只有 profile 明确允许的 semantic kind 才能使用 fallback。向量或 memory recipe 缺失时会报错，避免用未经验证的默认时序掩盖模型缺口。
 
-### 5.3 等效向量分解
+### 5.3 后端向量分解
 
 Zen 4 profile 将多数 512 位操作分解成两个 256 位 execution part，并规定 part 发射间隔。这个分解用于表达内部数据路径对吞吐和依赖的影响，不声称等于硬件真实物理 uop 数。
+
+XSAI-RVV 使用 128 位内部数据宽度并生成真实 scheduler slot：普通向量计算按 LMUL 生成多个 uop，vector-scalar 增加 I2V/F2V prep，向量访存生成 prep 与 EMUL/flow uop，`vsetvli` 和 reduction 也保留各自的多 uop 结构。每个 backend uop 都像标量 uop 一样占用一个调度槽。
 
 外部 RAW 依赖会尽量按相同 `part_index` 连接。例如前一条 ZMM 加法的 part 0 可以连接后一条操作的 part 0，从而避免把两个等效 part 错误串成完全串行。
 
@@ -459,14 +461,12 @@ python3 softmax_sim_avx512/kernel/softmax/scripts/compare_cycles.py \
 
 这些缺失机制解释了为什么模拟结果允许存在合理误差。新增机制时应先确认它对目标 kernel 有可观测影响，并通过 schema/profile 显式配置。
 
-## 15. 扩展到 RVV
+## 15. XSAI-RVV 独立后端
 
-当前 CLI 的性能路径只启用了 x86；RVV kernel 已通过 Spike 做功能验证，但尚无目标 RVV 微架构 profile。
+CLI 已支持 RVV 动态前端，并根据 profile 的 `backend.execution_model` 选择后端：
 
-接入 RVV 周期模拟时需要新增：
+- `zen4`：冻结的 Zen 4 execution-uop 事件循环；
+- `xsai-rvv`：XSAI 专属 backend-uop 展开和事件循环；
+- `generic-token`：仅用于旧配置和合成能力测试。
 
-1. RVV 动态前端：解释 `vsetvli`，根据 AVL、VLEN、SEW 和 LMUL 展开循环；
-2. RVV profile：定义 pipeline、资源、memory 和 instruction recipe；
-3. RVV 目标机器的独立参数 benchmark 与真机周期数据。
-
-不需要修改事件驱动调度器的 ISA 规则。只要 RVV 前端生成相同 contract 的动态 semantic uop，profile binder 生成相同结构的 execution uop，后端就能复用。
+两套生产后端复用 semantic uop、动态 trace、profile schema、内存层级接口与结果格式，但不复用调度状态机。这样 XSAI 的 LMUL 拆分、复杂指令 drain、分区 IQ、VLSU 和向量寄存器约束不会改变 Zen 4 的稳定周期。

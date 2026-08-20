@@ -709,7 +709,7 @@ class Profile:
         return self.data.get(
             "backend",
             {
-                "execution_model": "generic-token",
+                "execution_model": "zen4",
                 "scheduler_partitions": [],
                 "execution_units": {},
                 "register_files": {},
@@ -874,11 +874,15 @@ class Profile:
 
     @property
     def simulation_ready(self) -> bool:
-        return self.backend["execution_model"] == "generic-token"
+        return self.backend["execution_model"] in {
+            "zen4",
+            "xsai-rvv",
+            "generic-token",
+        }
 
     def _require_simulation_ready(self) -> None:
         execution_model = self.backend["execution_model"]
-        if execution_model != "generic-token":
+        if execution_model not in {"zen4", "xsai-rvv", "generic-token"}:
             raise ProfileError(
                 f"profile backend execution model is not implemented: {execution_model}"
             )

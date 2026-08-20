@@ -466,6 +466,7 @@ def simulate_matrix(
             )
             return {
                 "cycles": float(result.cycles),
+                "backend": result.backend,
                 "dynamic_instruction_count": dynamic["statistics"][
                     "dynamic_instruction_count"
                 ],
@@ -515,6 +516,7 @@ def simulate_matrix(
         "profile_sha256": profile.digest,
         "profile_path": str(profile_path),
         "schema_path": str(schema_path),
+        "backend": str(profile.backend["execution_model"]),
         "execution_model": "out_of_order",
         "cache_mode": "hot-l1",
     }
@@ -657,6 +659,7 @@ def write_report(
             [
                 f"- Profile：`{simulation_metadata['profile_id']}`"
                 f"（`{simulation_metadata['profile_sha256']}`）",
+                f"- 执行后端：`{simulation_metadata['backend']}`",
                 "- 执行模型：乱序、Hot-L1",
             ]
         )
@@ -761,7 +764,7 @@ def write_report(
 
 def parse_arguments(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Align XSAI RTL kernel cycles with the generic simulator"
+        description="Align XSAI RTL kernel cycles with the selected simulator backend"
     )
     parser.add_argument(
         "--rtl-summary",

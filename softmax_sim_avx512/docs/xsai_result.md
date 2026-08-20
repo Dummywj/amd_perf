@@ -7,40 +7,41 @@
 - 模式：`simulate`
 - RTL 汇总：`/nfs/home/yuweijie/project/amd_perf/softmax_sim_avx512/artifacts/xsai/rtl/summary.csv`
 - RTL 点数：36，模拟点数：36，拟合有效点数：36
-- Profile：`xsai-default-matrix-rvv`（`d70f29ca814e0460fac5ebcf8e75861fe5a229c1e4537b2bff1c7d9f5a11c5f2`）
+- Profile：`xsai-default-matrix-rvv`（`ac27c4119a89a4efc920802184a754bd1f98ede6377d2afe5aa9eeb2bee8eca3`）
+- 执行后端：`xsai-rvv`
 - 执行模型：乱序、Hot-L1
 - 缓存证据：clean=36，contaminated=0，unknown=0。后两类不进入拟合统计。
 
 ## 汇总
 
-拟合有效点 MAPE 为 47.04%，最大绝对相对误差为 83.22%。
+拟合有效点 MAPE 为 47.03%，最大绝对相对误差为 83.21%。
 
 | Kernel | N | RTL cycles | Simulator cycles | Error | Cache | Fit |
 |---|---:|---:|---:|---:|---|---|
 | fma_throughput | 512 | 4548 | 4430 | -2.59% | clean | yes |
 | fma_throughput | 1024 | 9065 | 8846 | -2.42% | clean | yes |
 | fma_throughput | 2048 | 18086 | 17678 | -2.26% | clean | yes |
-| fma_latency | 512 | 4341 | 4306 | -0.81% | clean | yes |
-| fma_latency | 1024 | 8628 | 8594 | -0.39% | clean | yes |
-| fma_latency | 2048 | 17206 | 17170 | -0.21% | clean | yes |
-| axpy | 512 | 3148 | 907 | -71.19% | clean | yes |
-| axpy | 1024 | 6196 | 1803 | -70.90% | clean | yes |
-| axpy | 2048 | 12352 | 3595 | -70.90% | clean | yes |
+| fma_latency | 512 | 4341 | 4305 | -0.83% | clean | yes |
+| fma_latency | 1024 | 8628 | 8593 | -0.41% | clean | yes |
+| fma_latency | 2048 | 17206 | 17169 | -0.22% | clean | yes |
+| axpy | 512 | 3148 | 908 | -71.16% | clean | yes |
+| axpy | 1024 | 6196 | 1804 | -70.88% | clean | yes |
+| axpy | 2048 | 12352 | 3596 | -70.89% | clean | yes |
 | vector_copy | 512 | 1276 | 898 | -29.62% | clean | yes |
 | vector_copy | 1024 | 2667 | 1794 | -32.73% | clean | yes |
 | vector_copy | 2048 | 5162 | 3586 | -30.53% | clean | yes |
-| vector_triad | 512 | 3148 | 907 | -71.19% | clean | yes |
-| vector_triad | 1024 | 6265 | 1803 | -71.22% | clean | yes |
-| vector_triad | 2048 | 12503 | 3595 | -71.25% | clean | yes |
-| pointer_agu | 512 | 3625 | 1038 | -71.37% | clean | yes |
-| pointer_agu | 1024 | 7208 | 2062 | -71.39% | clean | yes |
-| pointer_agu | 2048 | 14377 | 4110 | -71.41% | clean | yes |
-| dot_product | 512 | 5414 | 933 | -82.77% | clean | yes |
-| dot_product | 1024 | 10802 | 1829 | -83.07% | clean | yes |
-| dot_product | 2048 | 21580 | 3621 | -83.22% | clean | yes |
-| vector_reduction | 512 | 4394 | 3849 | -12.40% | clean | yes |
-| vector_reduction | 1024 | 8746 | 7689 | -12.09% | clean | yes |
-| vector_reduction | 2048 | 17450 | 15369 | -11.93% | clean | yes |
+| vector_triad | 512 | 3148 | 908 | -71.16% | clean | yes |
+| vector_triad | 1024 | 6265 | 1804 | -71.21% | clean | yes |
+| vector_triad | 2048 | 12503 | 3596 | -71.24% | clean | yes |
+| pointer_agu | 512 | 3625 | 1039 | -71.34% | clean | yes |
+| pointer_agu | 1024 | 7208 | 2063 | -71.38% | clean | yes |
+| pointer_agu | 2048 | 14377 | 4111 | -71.41% | clean | yes |
+| dot_product | 512 | 5414 | 935 | -82.73% | clean | yes |
+| dot_product | 1024 | 10802 | 1831 | -83.05% | clean | yes |
+| dot_product | 2048 | 21580 | 3623 | -83.21% | clean | yes |
+| vector_reduction | 512 | 4394 | 3848 | -12.43% | clean | yes |
+| vector_reduction | 1024 | 8746 | 7688 | -12.10% | clean | yes |
+| vector_reduction | 2048 | 17450 | 15368 | -11.93% | clean | yes |
 | conversion | 512 | 3963 | 1039 | -73.78% | clean | yes |
 | conversion | 1024 | 7902 | 2063 | -73.89% | clean | yes |
 | conversion | 2048 | 15781 | 4111 | -73.95% | clean | yes |
@@ -50,9 +51,9 @@
 | mixed_compute | 512 | 6534 | 3345 | -48.81% | clean | yes |
 | mixed_compute | 1024 | 13041 | 6673 | -48.83% | clean | yes |
 | mixed_compute | 2048 | 26055 | 13329 | -48.84% | clean | yes |
-| softmax | 512 | 15649 | 11935 | -23.73% | clean | yes |
-| softmax | 1024 | 31130 | 23847 | -23.40% | clean | yes |
-| softmax | 2048 | 62388 | 47666 | -23.60% | clean | yes |
+| softmax | 512 | 15649 | 11949 | -23.64% | clean | yes |
+| softmax | 1024 | 31130 | 23871 | -23.32% | clean | yes |
+| softmax | 2048 | 62388 | 47715 | -23.52% | clean | yes |
 
 ## 差距诊断
 

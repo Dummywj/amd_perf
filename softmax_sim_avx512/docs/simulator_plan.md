@@ -1,6 +1,8 @@
 # 通用 Uop 事件驱动模拟器执行计划
 
 > 状态：审核反馈已纳入；实现与首轮验证已完成，结果见 `simulator_result.md`。
+> 本计划记录首轮 Zen 4 设计。XSAI 对齐已证明执行模型不能完全共用，当前多后端
+> 边界以 `simulator_xsai.md` 和 `tutorial/simulator.md` 为准。
 
 ## 1. 目标
 

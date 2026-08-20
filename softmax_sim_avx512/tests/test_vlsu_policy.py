@@ -160,6 +160,7 @@ class VlsuPolicyTest(unittest.TestCase):
     def test_address_crossing_boundary_occupies_split_issue_lane(self) -> None:
         profile = load_profile(ROOT / "profiles/amd_zen4.yaml")
         profile.data["backend"] = copy.deepcopy(profile.backend)
+        profile.data["backend"]["execution_model"] = "generic-token"
         profile.data["backend"]["vector_memory"] = {
             "boundary_bytes": 16,
             "max_unit_stride_flows": 2,
@@ -202,6 +203,7 @@ class VlsuPolicyTest(unittest.TestCase):
     def test_flow_count_is_capped_and_load_store_lanes_are_independent(self) -> None:
         profile = load_profile(ROOT / "profiles/amd_zen4.yaml")
         profile.data["backend"] = copy.deepcopy(profile.backend)
+        profile.data["backend"]["execution_model"] = "generic-token"
         profile.data["backend"]["vector_memory"] = {
             "boundary_bytes": 16,
             "max_unit_stride_flows": 2,
@@ -237,6 +239,7 @@ class VlsuPolicyTest(unittest.TestCase):
     def test_service_token_outlives_uop_completion(self) -> None:
         profile = load_profile(ROOT / "profiles/amd_zen4.yaml")
         profile.data["backend"] = copy.deepcopy(profile.backend)
+        profile.data["backend"]["execution_model"] = "generic-token"
         profile.data["backend"]["vector_memory"] = {
             "service_capacity": {"store": 1},
             "service_cycles": {"store": 6},
@@ -268,6 +271,7 @@ class VlsuPolicyTest(unittest.TestCase):
     def test_zero_service_cycles_release_token_at_issue(self) -> None:
         profile = load_profile(ROOT / "profiles/amd_zen4.yaml")
         profile.data["backend"] = copy.deepcopy(profile.backend)
+        profile.data["backend"]["execution_model"] = "generic-token"
         profile.data["backend"]["vector_memory"] = {
             "service_capacity": {"store": 1},
             "service_cycles": {"store": 0},
@@ -291,6 +295,7 @@ class VlsuPolicyTest(unittest.TestCase):
     def test_load_and_store_service_capacity_are_independent(self) -> None:
         profile = load_profile(ROOT / "profiles/amd_zen4.yaml")
         profile.data["backend"] = copy.deepcopy(profile.backend)
+        profile.data["backend"]["execution_model"] = "generic-token"
         profile.data["backend"]["vector_memory"] = {
             "service_capacity": {"load": 1, "store": 1},
             "service_cycles": {"load": 6, "store": 6},

@@ -356,7 +356,7 @@
     },
     "backend": {
       "type": "object",
-      "description": "Structural backend topology. The event engine may consume only a supported execution_model; topology remains auditable even while a profile is draft.",
+      "description": "Structural topology consumed by the named microarchitecture backend. Semantic uops are shared, but backend-uop expansion and scheduling may differ by execution_model.",
       "additionalProperties": false,
       "required": [
         "execution_model",
@@ -772,7 +772,7 @@
     },
     "vector_dependency_policy": {
       "type": "object",
-      "description": "Optional semantic vector readiness rules. The generic backend applies these rules only when configured; omitted policies preserve legacy behavior.",
+      "description": "Optional semantic vector readiness rules applied by backends that support them; omitted policies preserve legacy behavior.",
       "additionalProperties": false,
       "required": ["evidence"],
       "anyOf": [

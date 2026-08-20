@@ -80,32 +80,22 @@ class PartialDispatchTest(unittest.TestCase):
         self.assertEqual(macro.rob_entry_count, 1)
         self.assertEqual(result.summary["rob_entries_allocated"], 1)
         self.assertEqual(result.summary["peak_rob"], 1)
-        self.assertEqual(result.summary["dispatch_units"], 9)
+        self.assertEqual(result.summary["dispatch_units"], 5)
+        self.assertEqual(result.summary["xsai_backend"]["scheduler_uops"], 5)
 
         ticks = [uop.dispatch_tick for uop in result.trace.uops]
+        self.assertEqual(Counter(ticks), Counter({0: 5}))
         self.assertEqual(
-            Counter(ticks), Counter({0: 5, result.ticks_per_cycle: 4})
+            Counter(uop.scheduler_partition for uop in result.trace.uops),
+            Counter({"int-iq-2": 1, "vlsu-iq-0": 2, "vlsu-iq-1": 2}),
         )
-        for tick in (0, result.ticks_per_cycle):
-            self.assertEqual(
-                Counter(
-                    uop.scheduler_partition
-                    for uop in result.trace.uops
-                    if uop.dispatch_tick == tick
-                ),
-                Counter(
-                    {"int-iq-2": 1, "vlsu-iq-0": 2, "vlsu-iq-1": 2}
-                )
-                if tick == 0
-                else Counter({"vlsu-iq-0": 2, "vlsu-iq-1": 2}),
-            )
         self.assertTrue(
             all(
                 uop.issue_tick is not None and uop.complete_tick is not None
                 for uop in result.trace.uops
             )
         )
-        self.assertEqual(macro.retire_tick, result.ticks_per_cycle * 4)
+        self.assertEqual(macro.retire_tick, result.ticks_per_cycle * 3)
 
 
 if __name__ == "__main__":

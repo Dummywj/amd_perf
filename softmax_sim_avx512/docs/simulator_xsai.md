@@ -1,6 +1,6 @@
 # XSAI 模拟器对齐执行计划
 
-> 状态：RTL 正式采集已完成，通用后端差距分析进行中。本文件同时记录执行边界；
+> 状态：RTL 正式采集已完成，Zen 4 后端已冻结，XSAI-RVV 独立后端已建立；
 > 当前结果不能宣称 XSAI 与模拟器已经完成周期对齐。
 
 目标是以同一套 semantic uop 表达 x86 与 RVV，在保留 XSAI Core 实际结构约束的
@@ -60,36 +60,29 @@ VSET/VL/VLSU 定向 case x 5 样本通过同样门禁，采集证据已
 
 ## 3. 完成 XSAI 微架构模拟
 
-**Capability-gap 当前结论：通用事件后端仍可扩展，尚不需要复制一套 XSAI
-scheduler/backend。** 仅替换 Zen 4 profile 确实不足；已经确认的结构差异按通用
-`generic-token` 能力补入公共事件后端：
+**Capability-gap 结论已经改变：XSAI-RVV 使用独立执行后端。** 36 点对齐中只有 FMA
+类接近，而 load、conversion、integer、reduction 和组合 kernel 大量低估；继续向公共
+调度器加入 XSAI 的 VL 物理状态、复杂指令 drain、VLSU split/merge/replay 会再次改变
+Zen 4 行为。回归已确认这种污染实际发生过，因此不再扩展生产用通用后端。
 
-| 通用能力 | 当前实现 |
+当前代码边界为：
+
+| 文件 | 职责 |
 |---|---|
-| 前端 dispatch domain | profile 可定义每架构周期重置的 macro admission token；XSAI 的 `vector-complex-decode` 容量为 1，仅约束 `isComplex` RVV macro 通过单个 `DecodeUnitComp` 输入，不推断后端端口或 latency |
-| dispatch/ROB 分账 | macro 可分别携带 dispatch units 和 ROB entries；XSAI dispatch 取 decoded uop 与 execution uop 数量的较大值，ROB 始终按一条架构指令占一项 |
-| 分区调度 | scheduler partition 从 dispatch 持有到 issue，分别限制 entries/enqueue width |
-| FU 资格 | profile 将 semantic uop 映射到可执行 slot，核心不检查 RVV mnemonic |
-| RF/回写竞争 | vector read domain、writeback domain 和未来完成周期的 WB token 预约 |
-| 标量访存分区 | 标量 load、store-address、store-data 分别进入 LDU0-2、STA0-1、STD0-1 对应的 scheduler/FU；不占用 VLSU0/1 的向量访存资格 |
-| RVV 分解 | 按 LMUL 生成 register flows，按有效字节生成 128-bit memory flows并保留 tail bytes |
-| scalar preparation | vector-scalar 指令先生成一个 profile 选择的 I2V/F2V prep uop，再执行 LMUL compute uop |
-| VLSU address flow | profile 可按访问地址跨 128-bit 边界计算 1/2 个内部 flow，并使用聚合 split-lane 占用；内部 flow 不额外占用 semantic macro/merge entry |
+| `src/backend/zen4.py` | 冻结历史稳定 Zen 4 execution-uop 事件循环 |
+| `src/backend/xsai.py` | XSAI backend-uop 展开、分区调度、RF/WB、rename、VLSU 与时序循环 |
+| `src/simulator/engine.py` | 只按 profile 选择后端并保持旧 API |
 
-正式 RTL 对齐同时暴露了两项尚未覆盖的通用能力：一是普通 `vsetvli` 的标量结果与
-VL 物理写回需要分开可见，后续向量/VLSU consumer 应等待实际 VL 路径；二是 VLSU 的
-oldest/order、split/merge/replay 和完成事件不能只用一个 L1 latency token 代替。这些
-地址 flow split 已加入公共后端并由 13-case 产物做结构性回归；service lifetime、
-bank conflict、merge/replay 和 VL state visibility 仍需进一步的 profile-driven policy。
-这些能力继续复用同一事件后端，semantic uop 不变；只有
-后续证明必须复制 XSAI 的完整 replay/redirect 状态机时，才触发独立后端方案审核。
+semantic uop 仍是跨 ISA 的固定接口，但 backend uop 不是通用 ISA。XSAI 普通向量计算
+按 LMUL 生成 scheduler uop；vector-scalar 生成 I2V/F2V prep 加 LMUL uop；向量访存
+生成 prep 加 EMUL/128-bit flow；`vsetvli` 生成两个槽，e32/m1 reduction 生成三个串行
+槽。每个槽与标量 uop 一样占用一个 scheduler entry，不能只把 decoded count 记在
+macro 上而仍用一个 execution uop 调度。
 
-RVV 前端已解析 `vsetvli` 的 VL/SEW/LMUL，展开 kernel 循环、地址、寄存器依赖和有效
-访存字节，输出与 x86 相同接口的 dynamic trace/uop DAG。合成 capability 测试覆盖
-partition backpressure、execution-slot eligibility、共享 RF/WB、LMUL 和动态 memory
-flow、macro dispatch domain、dispatch/ROB 分账和标量/向量访存隔离，现有 Zen 4
-行为也已回归。因此 semantic uop ISA 保持一套，调度核心继续共享；当前不能把尚未
-实现的 VL/VLSU policy 描述成已经完成，也不能预先复制第二套调度器。
+首版 XSAI 时序循环复用了稳定的数据结构、memory hierarchy 和结果导出格式，但没有
+继承或调用 Zen 4 `Engine`。未独立校准的内部槽只表达调度占用，聚合 latency 暂时仍由
+最后一个槽承担，避免凭 kernel 误差虚构每级 latency。后续 VL/VTYPE、VLSU replay/
+merge、物理寄存器释放等改动只进入 `xsai.py`，不得回写 `zen4.py`。
 
 ## 4. 使用现有 Kernel 进行 XSAI 与模拟器对齐
 
@@ -140,17 +133,17 @@ RTL 导出的 L1D refill/miss 和 TLB miss 计数器为准，timed region 的 de
 
 执行顺序为：profile/schema 与来源固化 -> 裸机 RTL 流程复现 -> 后端 capability-gap
 与策略设计 -> 单资源微基准校准 -> 组合 kernel 对齐 -> Softmax 保留集验证。各阶段由
-自动测试和证据完整性门禁衔接，不作为人工停止点。仅当 capability-gap 结论要求复制
-一套独立 XSAI 后端时暂停并协商新方案；否则连续执行。最终报告同时列出已解释偏差和
-未解释偏差，不以单一平均误差掩盖失败测试点。
+自动测试和证据完整性门禁衔接。capability-gap 审核已经确认需要独立 XSAI 后端，且
+方案已获批准；后续继续在该边界内执行。最终报告同时列出已解释偏差和未解释偏差，
+不以单一平均误差掩盖失败测试点。
 
 **当前执行状态（2026-08-20）。** profile/schema、bare-metal/NEMU 门禁、HPM 审计、
-RVV 动态前端，以及包含复杂 decode 入口、dispatch/ROB 分账和标量访存分区的公共后端
-capability 已完成。正式无波形 RTL difftest 采集与验收完成，形成 41 个微基准 case x 5
+RVV 动态前端，以及独立 XSAI-RVV backend-uop 展开和事件循环已完成。正式无波形 RTL
+difftest 采集与验收完成，形成 41 个微基准 case x 5
 和 12 kernel x 3 N 的 clean 产物；另有 13-case VSET/VL/VLSU 矩阵，关键 hash 与门禁记录
-在 profile measurement source 中。当前 36 点 kernel 基线 MAPE 为 **47.04%**，13-case
-定向矩阵的通用后端 MAPE 为 **47.94%**；只有 FMA/compute-only 接近，其余 load 路径
-仍显示明显差距。对齐流结果还受到 DCache bank 访问模式影响，不能用来唯一反演 flow
+在 profile measurement source 中。迁移前的 36 点通用后端基线 MAPE 为 **47.04%**，
+13-case 定向矩阵为 **47.94%**；它们保留为独立后端的比较基线，不代表新后端已经完成
+对齐。对齐流结果还受到 DCache bank 访问模式影响，不能用来唯一反演 flow
 service 周期。普通 `v8` 的 directed load/load-use RTL 结果已经排除“统一 16-cycle vector
 load”假设；下一步应补齐真实逐迭代 `vsetvli a5,a5 -> VL writeback -> vector/VLSU
 consumer` 的状态可见性与 merge/replay 证据，再重新评估 36 点矩阵。该结果不是对齐完成声明；

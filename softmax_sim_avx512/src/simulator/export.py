@@ -20,6 +20,7 @@ def write_events_jsonl(path: Path, result: SimulationResult) -> None:
         "type": "metadata",
         "profile_id": result.trace.profile_id,
         "profile_sha256": result.trace.profile_sha256,
+        "backend": result.backend,
         "execution_model": result.execution_model,
         "cache_mode": result.cache_mode,
         "ticks_per_cycle": result.ticks_per_cycle,
@@ -156,6 +157,7 @@ def write_perfetto(
         "otherData": {
             "time_unit": "simulator_tick",
             "ticks_per_cycle": result.ticks_per_cycle,
+            "backend": result.backend,
             "execution_model": result.execution_model,
             "cache_mode": result.cache_mode,
             "profile_id": result.trace.profile_id,
@@ -210,7 +212,8 @@ def write_timeline(
     path.parent.mkdir(parents=True, exist_ok=True)
     end = instruction_start + instruction_limit
     lines = [
-        f"execution_model={result.execution_model} cycles={result.cycles:g} "
+        f"backend={result.backend} execution_model={result.execution_model} "
+        f"cycles={result.cycles:g} "
         f"ticks_per_cycle={result.ticks_per_cycle}",
         "D=dispatch  I=first issue  E=complete  R=retire",
     ]

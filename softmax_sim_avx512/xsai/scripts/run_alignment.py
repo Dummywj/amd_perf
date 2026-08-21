@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compare XSAI RTL kernel cycles with the generic semantic-uop simulator."""
+"""Compare XSAI RTL kernel cycles with the selected semantic-uop backend."""
 
 from __future__ import annotations
 
@@ -733,14 +733,20 @@ def write_report(
             [
                 "",
                 "普通 `v8` 的 load 与 load-use 结果不支持把所有向量 load "
-                "统一设为 16 cycle；该假设已排除。现有两组 vset 测试分别覆盖特殊 "
-                "keep-VL 形式和标量 `rd` RAW，但都没有覆盖真实 kernel 每轮 "
-                "`vsetvli a5,a5` 后由向量/VLSU 消费 VL 的路径。",
+                "统一设为 16 cycle；该假设已排除。独立 XSAI-RVV 后端保留 "
+                "LMUL/EMUL 展开的 scheduler slot，并用逐迭代 vector-state epoch "
+                "描述 `vsetvli` 到向量/VLSU consumer 的可见性。",
                 "",
-                "FMA kernel 的误差约为 0%--3%，而多数组合 kernel 仍明显偏乐观。"
-                "当前最小未决缺口是 profile-driven 的 VL 写回可见性，以及 VLSU "
-                "oldest/order、split/merge/replay 和完成路径；在定向 RTL 微基准完成前，"
-                "报告不会用 kernel 误差反推一个统一延迟或串行屏障。",
+                "当前 XSAI 专用策略按 semantic dataflow 区分 load-only、computed-store、"
+                "reduction 和混合 epoch，并对 load service 设置独立 token；不按 kernel "
+                "名称、N 或 RVV mnemonic 添加补偿。load visibility 与 computed-store drain "
+                "由 clean 的 13-case 矩阵交叉检查；reduction overlap 与 mixed capacity "
+                "仍是低置信 kernel-fit 参数，尚无独立定向 holdout。这些等效约束不是对"
+                "物理 VLSU pipe、merge buffer 或 replay 状态机的逐周期复刻。",
+                "",
+                "尚未精确建模的部分主要是 DCache bank 仲裁、VLSU replay/merge buffer "
+                "占用和 redirect 恢复。它们在 aligned 多流定向 case 中仍可观察到，但"
+                "当前 kernel 矩阵全部处于 ±5% 内，因此本轮不再增加无法独立辨识的参数。",
             ]
         )
     else:

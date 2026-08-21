@@ -116,6 +116,11 @@ class Profile:
         vector_memory = self.backend.get("vector_memory")
         if vector_memory:
             referenced.update(str(value) for value in vector_memory.get("evidence", []))
+        xsai_rvv = self.backend.get("xsai_rvv", {})
+        vector_epochs = xsai_rvv.get("vector_epochs", {})
+        referenced.update(
+            str(value) for value in vector_epochs.get("evidence", [])
+        )
         # Existing v4 recipes may use local equivalence labels in addition to
         # centralized metadata source ids, so recipe evidence remains free-form.
         fit = self.data.get("scalar_control_fit")
@@ -366,6 +371,29 @@ class Profile:
                 "backend.vector_memory.issue_cycles_per_flow must be "
                 "non-negative, 'measure', or omitted"
             )
+        xsai_rvv = backend.get("xsai_rvv")
+        if xsai_rvv is not None:
+            if backend.get("execution_model") != "xsai-rvv":
+                raise ProfileError(
+                    "backend.xsai_rvv requires execution_model: xsai-rvv"
+                )
+            epoch = xsai_rvv["vector_epochs"]
+            for field in (
+                "load_only_visibility_cycles",
+                "multi_load_drain_cycles",
+                "chained_compute_drain_cycles",
+                "parallel_reduction_overlap_cycles",
+            ):
+                value = epoch[field]
+                if value != "measure" and (
+                    isinstance(value, bool)
+                    or not isinstance(value, (int, float))
+                    or value < 0
+                ):
+                    raise ProfileError(
+                        f"backend.xsai_rvv.vector_epochs.{field} must be "
+                        "non-negative or 'measure'"
+                    )
         for domain_id, domain in backend.get("dispatch_domains", {}).items():
             capacity = domain.get("capacity")
             if capacity != "measure" and (
@@ -785,6 +813,35 @@ class Profile:
                     configured["issue_cycles_per_flow"]
                 ),
             }
+        return result
+
+    @property
+    def xsai_vector_epoch_policy(self) -> dict[str, Any]:
+        """Return policy data used only by the independent XSAI-RVV backend."""
+        configured = self.backend.get("xsai_rvv", {}).get("vector_epochs")
+        if configured is None:
+            return {"enabled": False}
+        cycle_fields = (
+            "load_only_visibility_cycles",
+            "multi_load_drain_cycles",
+            "chained_compute_drain_cycles",
+            "parallel_reduction_overlap_cycles",
+        )
+        result: dict[str, Any] = {"enabled": bool(configured["enabled"])}
+        for field in cycle_fields:
+            value = configured[field]
+            if value == "measure":
+                self._measurement_required(
+                    f"backend.xsai_rvv.vector_epochs.{field}"
+                )
+            result[field.replace("_cycles", "_ticks")] = self.ticks(value)
+        capacity = configured["mixed_store_reduction_capacity"]
+        if capacity == "measure":
+            self._measurement_required(
+                "backend.xsai_rvv.vector_epochs."
+                "mixed_store_reduction_capacity"
+            )
+        result["mixed_store_reduction_capacity"] = int(capacity)
         return result
 
     @property

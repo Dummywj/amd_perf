@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compare the XSAI vset-gap RTL cases with the generic simulator."""
+"""Compare XSAI vset-gap RTL cases with the selected simulator backend."""
 
 from __future__ import annotations
 

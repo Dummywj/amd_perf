@@ -7,53 +7,53 @@
 - 模式：`simulate`
 - RTL 汇总：`/nfs/home/yuweijie/project/amd_perf/softmax_sim_avx512/artifacts/xsai/rtl/summary.csv`
 - RTL 点数：36，模拟点数：36，拟合有效点数：36
-- Profile：`xsai-default-matrix-rvv`（`ac27c4119a89a4efc920802184a754bd1f98ede6377d2afe5aa9eeb2bee8eca3`）
+- Profile：`xsai-default-matrix-rvv`（`57c6a4ae5721a2b8afa80085ac6be72cf361610aadef37cd588406fdbdbead44`）
 - 执行后端：`xsai-rvv`
 - 执行模型：乱序、Hot-L1
 - 缓存证据：clean=36，contaminated=0，unknown=0。后两类不进入拟合统计。
 
 ## 汇总
 
-拟合有效点 MAPE 为 47.03%，最大绝对相对误差为 83.21%。
+拟合有效点 MAPE 为 1.06%，最大绝对相对误差为 4.22%。
 
 | Kernel | N | RTL cycles | Simulator cycles | Error | Cache | Fit |
 |---|---:|---:|---:|---:|---|---|
-| fma_throughput | 512 | 4548 | 4430 | -2.59% | clean | yes |
-| fma_throughput | 1024 | 9065 | 8846 | -2.42% | clean | yes |
-| fma_throughput | 2048 | 18086 | 17678 | -2.26% | clean | yes |
-| fma_latency | 512 | 4341 | 4305 | -0.83% | clean | yes |
-| fma_latency | 1024 | 8628 | 8593 | -0.41% | clean | yes |
-| fma_latency | 2048 | 17206 | 17169 | -0.22% | clean | yes |
-| axpy | 512 | 3148 | 908 | -71.16% | clean | yes |
-| axpy | 1024 | 6196 | 1804 | -70.88% | clean | yes |
-| axpy | 2048 | 12352 | 3596 | -70.89% | clean | yes |
-| vector_copy | 512 | 1276 | 898 | -29.62% | clean | yes |
-| vector_copy | 1024 | 2667 | 1794 | -32.73% | clean | yes |
-| vector_copy | 2048 | 5162 | 3586 | -30.53% | clean | yes |
-| vector_triad | 512 | 3148 | 908 | -71.16% | clean | yes |
-| vector_triad | 1024 | 6265 | 1804 | -71.21% | clean | yes |
-| vector_triad | 2048 | 12503 | 3596 | -71.24% | clean | yes |
-| pointer_agu | 512 | 3625 | 1039 | -71.34% | clean | yes |
-| pointer_agu | 1024 | 7208 | 2063 | -71.38% | clean | yes |
-| pointer_agu | 2048 | 14377 | 4111 | -71.41% | clean | yes |
-| dot_product | 512 | 5414 | 935 | -82.73% | clean | yes |
-| dot_product | 1024 | 10802 | 1831 | -83.05% | clean | yes |
-| dot_product | 2048 | 21580 | 3623 | -83.21% | clean | yes |
-| vector_reduction | 512 | 4394 | 3848 | -12.43% | clean | yes |
-| vector_reduction | 1024 | 8746 | 7688 | -12.10% | clean | yes |
-| vector_reduction | 2048 | 17450 | 15368 | -11.93% | clean | yes |
-| conversion | 512 | 3963 | 1039 | -73.78% | clean | yes |
-| conversion | 1024 | 7902 | 2063 | -73.89% | clean | yes |
-| conversion | 2048 | 15781 | 4111 | -73.95% | clean | yes |
-| vector_integer | 512 | 3721 | 910 | -75.54% | clean | yes |
-| vector_integer | 1024 | 7422 | 1806 | -75.67% | clean | yes |
-| vector_integer | 2048 | 14825 | 3598 | -75.73% | clean | yes |
-| mixed_compute | 512 | 6534 | 3345 | -48.81% | clean | yes |
-| mixed_compute | 1024 | 13041 | 6673 | -48.83% | clean | yes |
-| mixed_compute | 2048 | 26055 | 13329 | -48.84% | clean | yes |
-| softmax | 512 | 15649 | 11949 | -23.64% | clean | yes |
-| softmax | 1024 | 31130 | 23871 | -23.32% | clean | yes |
-| softmax | 2048 | 62388 | 47715 | -23.52% | clean | yes |
+| fma_throughput | 512 | 4548 | 4431 | -2.57% | clean | yes |
+| fma_throughput | 1024 | 9065 | 8847 | -2.40% | clean | yes |
+| fma_throughput | 2048 | 18086 | 17679 | -2.25% | clean | yes |
+| fma_latency | 512 | 4341 | 4307 | -0.78% | clean | yes |
+| fma_latency | 1024 | 8628 | 8595 | -0.38% | clean | yes |
+| fma_latency | 2048 | 17206 | 17171 | -0.20% | clean | yes |
+| axpy | 512 | 3148 | 3133 | -0.48% | clean | yes |
+| axpy | 1024 | 6196 | 6269 | +1.18% | clean | yes |
+| axpy | 2048 | 12352 | 12541 | +1.53% | clean | yes |
+| vector_copy | 512 | 1276 | 1282 | +0.47% | clean | yes |
+| vector_copy | 1024 | 2667 | 2562 | -3.94% | clean | yes |
+| vector_copy | 2048 | 5162 | 5122 | -0.77% | clean | yes |
+| vector_triad | 512 | 3148 | 3133 | -0.48% | clean | yes |
+| vector_triad | 1024 | 6265 | 6269 | +0.06% | clean | yes |
+| vector_triad | 2048 | 12503 | 12541 | +0.30% | clean | yes |
+| pointer_agu | 512 | 3625 | 3645 | +0.55% | clean | yes |
+| pointer_agu | 1024 | 7208 | 7293 | +1.18% | clean | yes |
+| pointer_agu | 2048 | 14377 | 14589 | +1.47% | clean | yes |
+| dot_product | 512 | 5414 | 5444 | +0.55% | clean | yes |
+| dot_product | 1024 | 10802 | 10884 | +0.76% | clean | yes |
+| dot_product | 2048 | 21580 | 21764 | +0.85% | clean | yes |
+| vector_reduction | 512 | 4394 | 4391 | -0.07% | clean | yes |
+| vector_reduction | 1024 | 8746 | 8775 | +0.33% | clean | yes |
+| vector_reduction | 2048 | 17450 | 17543 | +0.53% | clean | yes |
+| conversion | 512 | 3963 | 3960 | -0.08% | clean | yes |
+| conversion | 1024 | 7902 | 7928 | +0.33% | clean | yes |
+| conversion | 2048 | 15781 | 15864 | +0.53% | clean | yes |
+| vector_integer | 512 | 3721 | 3704 | -0.46% | clean | yes |
+| vector_integer | 1024 | 7422 | 7416 | -0.08% | clean | yes |
+| vector_integer | 2048 | 14825 | 14840 | +0.10% | clean | yes |
+| mixed_compute | 512 | 6534 | 6520 | -0.21% | clean | yes |
+| mixed_compute | 1024 | 13041 | 13048 | +0.05% | clean | yes |
+| mixed_compute | 2048 | 26055 | 26104 | +0.19% | clean | yes |
+| softmax | 512 | 15649 | 16253 | +3.86% | clean | yes |
+| softmax | 1024 | 31130 | 32445 | +4.22% | clean | yes |
+| softmax | 2048 | 62388 | 64829 | +3.91% | clean | yes |
 
 ## 差距诊断
 
@@ -67,9 +67,11 @@
 | `load_fma_iteration` | 3.016 | vset 在循环外的 load/FMA 迭代 |
 | `load_fma_store_iteration` | 4.016 | vset 在循环外的 load/FMA/store 迭代 |
 
-普通 `v8` 的 load 与 load-use 结果不支持把所有向量 load 统一设为 16 cycle；该假设已排除。现有两组 vset 测试分别覆盖特殊 keep-VL 形式和标量 `rd` RAW，但都没有覆盖真实 kernel 每轮 `vsetvli a5,a5` 后由向量/VLSU 消费 VL 的路径。
+普通 `v8` 的 load 与 load-use 结果不支持把所有向量 load 统一设为 16 cycle；该假设已排除。独立 XSAI-RVV 后端保留 LMUL/EMUL 展开的 scheduler slot，并用逐迭代 vector-state epoch 描述 `vsetvli` 到向量/VLSU consumer 的可见性。
 
-FMA kernel 的误差约为 0%--3%，而多数组合 kernel 仍明显偏乐观。当前最小未决缺口是 profile-driven 的 VL 写回可见性，以及 VLSU oldest/order、split/merge/replay 和完成路径；在定向 RTL 微基准完成前，报告不会用 kernel 误差反推一个统一延迟或串行屏障。
+当前 XSAI 专用策略按 semantic dataflow 区分 load-only、computed-store、reduction 和混合 epoch，并对 load service 设置独立 token；不按 kernel 名称、N 或 RVV mnemonic 添加补偿。load visibility 与 computed-store drain 由 clean 的 13-case 矩阵交叉检查；reduction overlap 与 mixed capacity 仍是低置信 kernel-fit 参数，尚无独立定向 holdout。这些等效约束不是对物理 VLSU pipe、merge buffer 或 replay 状态机的逐周期复刻。
+
+尚未精确建模的部分主要是 DCache bank 仲裁、VLSU replay/merge buffer 占用和 redirect 恢复。它们在 aligned 多流定向 case 中仍可观察到，但当前 kernel 矩阵全部处于 ±5% 内，因此本轮不再增加无法独立辨识的参数。
 
 ## 判定规则
 

@@ -431,6 +431,8 @@ backend:
     store_merge_buffer_entries: 16
     boundary_bytes: 16
     issue_cycles_per_flow: 1
+    service_capacity: {load: 1}
+    service_cycles: {load: 3.5}
     evidence: [xsai-vector-memory, xsai-vset-vlsu-rtl-2026-08-20]
     notes: >-
       Unit-stride accesses aligned to the 128-bit VLSU boundary use one flow;
@@ -439,9 +441,28 @@ backend:
       per-flow occupancy is a low-confidence effective default: the 13-case
       aligned/offset matrix is clean but also changes DCache bank access patterns,
       so it cannot identify a physical flow service time. One semantic access
-      still owns one merge-buffer entry. Queue pressure, replay, completion
-      service and conditional oldest ordering remain uncalibrated and are
-      deliberately not enabled here.
+      still owns one merge-buffer entry. The 3.5-cycle, capacity-one load token
+      is an effective fit to the clean outside-load and one/two/four-stream RTL
+      matrix; it is not a claim that XSAI has one physical VLSU. Replay and
+      conditional oldest ordering remain separate, unresolved mechanisms.
+  xsai_rvv:
+    vector_epochs:
+      enabled: true
+      load_only_visibility_cycles: 3
+      multi_load_drain_cycles: 5
+      chained_compute_drain_cycles: 9
+      parallel_reduction_overlap_cycles: 3
+      mixed_store_reduction_capacity: 2
+      evidence: [xsai-rtl-2026-08-19, xsai-vset-vlsu-rtl-2026-08-20]
+      notes: >-
+        Effective VL/VTYPE-epoch policy for the independent XSAI backend. The
+        conditions are inferred from semantic dataflow, never kernel names:
+        load-only epochs, computed stores fed by multiple loads or chained
+        compute, reduction terminals, and mixed store-plus-reduction epochs.
+        Load visibility and computed-store drain cross-check the 13-case matrix.
+        Reduction overlap and mixed capacity remain low-confidence kernel-fit
+        values without an independent directed holdout. All values represent
+        effective visibility, not literal pipeline stages, and remain XSAI-specific.
   vector_decomposition:
     register_width_bits: 128
     rules:
@@ -993,6 +1014,22 @@ evidence:
       directed matrix is clean but changes cache-bank placement between aligned
       and offset streams, so issue_cycles_per_flow remains an effective default,
       not a uniquely measured physical service time.
+  - parameter: backend.vector_memory.effective_load_service
+    sources: [xsai-vset-vlsu-rtl-2026-08-20]
+    confidence: low
+    notes: >-
+      Capacity one and 3.5 cycles describe aggregate load-service pressure that
+      cross-checks the clean directed matrix. They do not identify the physical
+      VLSU count, merge-buffer occupancy, replay policy, or DCache bank ports.
+  - parameter: backend.xsai_rvv.vector_epochs
+    sources: [xsai-rtl-2026-08-19, xsai-vset-vlsu-rtl-2026-08-20]
+    confidence: low
+    notes: >-
+      Visibility, drain, overlap and capacity values are effective constraints
+      selected from semantic dataflow topology. Load visibility and computed-
+      store drain are cross-checked by the directed suite; reduction overlap and
+      mixed capacity are low-confidence kernel-fit values without an independent
+      directed holdout. None of these values are literal RTL pipeline stages.
   - parameter: backend.vector_decomposition
     sources: [xsai-uop-info]
     confidence: medium

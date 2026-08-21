@@ -33,13 +33,36 @@ class VlsuPolicyTest(unittest.TestCase):
         self.assertEqual(
             profile.vector_memory_policy["issue_order"], "any"
         )
-        self.assertNotIn("service_capacity", profile.vector_memory_policy)
+        self.assertEqual(
+            profile.vector_memory_policy["service_capacity"], {"load": 1}
+        )
+        self.assertEqual(
+            profile.vector_memory_policy["service_ticks"],
+            {"load": profile.ticks(3.5)},
+        )
         self.assertEqual(
             profile.vector_memory_policy["flow_split"],
             {
                 "boundary_bytes": 16,
                 "max_flows_per_access": 2,
                 "issue_ticks_per_flow": profile.ticks(1),
+            },
+        )
+
+    def test_xsai_vector_epoch_policy_is_backend_local(self) -> None:
+        xsai = load_profile(ROOT / "profiles/xsai.yaml")
+        zen4 = load_profile(ROOT / "profiles/amd_zen4.yaml")
+
+        self.assertEqual(zen4.xsai_vector_epoch_policy, {"enabled": False})
+        self.assertEqual(
+            xsai.xsai_vector_epoch_policy,
+            {
+                "enabled": True,
+                "load_only_visibility_ticks": xsai.ticks(3),
+                "multi_load_drain_ticks": xsai.ticks(5),
+                "chained_compute_drain_ticks": xsai.ticks(9),
+                "parallel_reduction_overlap_ticks": xsai.ticks(3),
+                "mixed_store_reduction_capacity": 2,
             },
         )
 

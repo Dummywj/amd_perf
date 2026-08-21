@@ -80,26 +80,22 @@ conda run -n ucagent python xsai/vset_gap/scripts/run_alignment.py
 
 | case | RTL cycles | simulator cycles | error |
 |---|---:|---:|---:|
-| `regular_lfs` | 1004 | 398 | -60.36% |
-| `keep_vl_lfs` | 1005 | 335 | -66.67% |
-| `vlmax_lfs` | 995 | 335 | -66.33% |
-| `outside_lfs` | 303 | 204 | -32.67% |
-| `regular_load` | 659 | 390 | -40.82% |
-| `outside_load` | 231 | 98 | -57.58% |
-| `load_stream_1` | 660 | 390 | -40.91% |
-| `load_stream_2` | 832 | 391 | -53.00% |
-| `load_stream_4` | 1075 | 395 | -63.26% |
-| `aligned_load_stream_2` | 1049 | 391 | -62.73% |
-| `aligned_load_stream_4` | 1050 | 395 | -62.38% |
-| `regular_compute` | 551 | 523 | -5.08% |
-| `regular_store` | 350 | 390 | +11.43% |
+| `regular_lfs` | 1004 | 1038 | +3.39% |
+| `keep_vl_lfs` | 1005 | 1038 | +3.28% |
+| `vlmax_lfs` | 995 | 1038 | +4.32% |
+| `outside_lfs` | 303 | 244 | -19.47% |
+| `regular_load` | 659 | 646 | -1.97% |
+| `outside_load` | 231 | 232 | +0.43% |
+| `load_stream_1` | 660 | 646 | -2.12% |
+| `load_stream_2` | 832 | 870 | +4.57% |
+| `load_stream_4` | 1075 | 1318 | +22.60% |
+| `aligned_load_stream_2` | 1049 | 870 | -17.06% |
+| `aligned_load_stream_4` | 1050 | 1318 | +25.52% |
+| `regular_compute` | 551 | 536 | -2.72% |
+| `regular_store` | 350 | 396 | +13.14% |
 
-13-case MAPE 为 47.94%。`regular_compute` 仍接近，而普通 load 和 load/FMA/store
-明显偏乐观。对齐流与偏移流的地址布局不同，RTL 的差异同时可能包含 DCache bank
-仲裁，因此不能把两者差值直接解释成 split-flow 服务周期。当前 profile 只启用源码支持的
-地址 flow 分类和 split-lane 能力；`issue_cycles_per_flow=1` 是低置信 effective default，
-不用于按 kernel 反推延迟。
-
-这些数据支持继续检查普通 vector load admission、VLSU 排序/完成、DCache bank 竞争以及
-逐迭代 vset-to-VLSU 状态可见性；它不支持单独增加 FMA latency 或设置一个全局 VLSU
-串行屏障来拟合完整 loop。
+13-case MAPE 为 9.28%。逐迭代 vset/load/FMA/store 与单 load 流已接近 RTL；主要残差
+集中在 4 路与 aligned 多流。对齐流与偏移流的地址布局不同，RTL 的差异同时包含 DCache
+bank 仲裁，因此不能把两者差值直接解释成 split-flow 服务周期。当前 profile 的 epoch 与
+load-service 参数是跨定向矩阵和 kernel 矩阵校准的等效约束，不是物理 VLSU 数量或统一
+load latency，也不单独修改 FMA latency。

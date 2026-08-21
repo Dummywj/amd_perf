@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 
 from src.backend.xsai import XsaiRvvEngine, _XsaiUopExpander
+from src.frontends.rvv import build_dynamic_trace
 from src.simulator.engine import backend_name, simulate
 from src.simulator.profile import load_profile
 
@@ -198,6 +200,68 @@ class XsaiBackendTest(unittest.TestCase):
         self.assertFalse(uops[0].owns_execution_timing)
         self.assertFalse(uops[1].owns_execution_timing)
         self.assertTrue(uops[2].owns_execution_timing)
+
+    def test_xsai_epoch_policy_matches_regular_load_rtl_probe(self) -> None:
+        trace = build_dynamic_trace(
+            ROOT / "xsai/vset_gap/fixtures/vset_gap_expanded.s",
+            "xsai_vg_regular_load",
+            ROOT / "recipes/rvv.yaml",
+            64,
+            ROOT / "uops/uop_kinds.yaml",
+            vlen_bits=128,
+        )
+
+        result = simulate(self.profile.bind(trace), self.profile)
+        epochs = result.summary["xsai_vector_epochs"]
+
+        # The clean RTL median is 659 cycles. Keep the directed probe within
+        # 3% while also checking that the constraint came from 63 consecutive
+        # vector-state epochs rather than a kernel-name adjustment.
+        self.assertLessEqual(abs(result.cycles - 659) / 659, 0.03)
+        self.assertEqual(epochs["close_edges"], 63)
+        self.assertEqual(epochs["load_visibility_uops"], 64)
+        self.assertGreater(
+            epochs["blockers"].get("xsai_vector_epoch_completion", 0), 0
+        )
+
+    def test_computed_store_counts_only_ancestor_loads(self) -> None:
+        engine = object.__new__(XsaiRvvEngine)
+        engine.uops = {
+            "load-used": SimpleNamespace(
+                id="load-used",
+                parent_id="load-used-parent",
+                kind="load_data",
+                dependencies=set(),
+            ),
+            "load-unrelated": SimpleNamespace(
+                id="load-unrelated",
+                parent_id="load-unrelated-parent",
+                kind="load_data",
+                dependencies=set(),
+            ),
+            "compute": SimpleNamespace(
+                id="compute",
+                parent_id="compute-parent",
+                kind="vector_fp",
+                dependencies={"load-used"},
+            ),
+            "store": SimpleNamespace(
+                id="store",
+                parent_id="store-parent",
+                kind="store_data",
+                dependencies={"compute"},
+            ),
+        }
+
+        compute, loads = engine._computed_store_ancestor_parents(
+            engine.uops["store"],
+            set(engine.uops),
+            {"load-used-parent", "load-unrelated-parent", "store-parent"},
+            {"load-used-parent", "load-unrelated-parent"},
+        )
+
+        self.assertEqual(compute, {"compute-parent"})
+        self.assertEqual(loads, {"load-used-parent"})
 
 
 if __name__ == "__main__":

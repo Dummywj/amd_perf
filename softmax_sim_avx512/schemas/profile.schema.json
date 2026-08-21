@@ -415,6 +415,9 @@
         "vector_dependency": {
           "$ref": "#/$defs/vector_dependency_policy"
         },
+        "xsai_rvv": {
+          "$ref": "#/$defs/xsai_rvv_backend_policy"
+        },
         "vector_decomposition": {
           "$ref": "#/$defs/vector_decomposition_backend"
         },
@@ -683,6 +686,67 @@
         "issue_cycles_per_flow": {
           "$ref": "#/$defs/number_or_measure",
           "description": "Load/store aggregate split-lane issue occupancy contributed by each internal flow. The flow count is capped by max_unit_stride_flows."
+        },
+        "evidence": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/identifier"
+          }
+        },
+        "notes": {
+          "type": "string"
+        }
+      }
+    },
+    "xsai_rvv_backend_policy": {
+      "type": "object",
+      "description": "Policies consumed only by the independent XSAI-RVV execution backend.",
+      "additionalProperties": false,
+      "required": ["vector_epochs"],
+      "properties": {
+        "vector_epochs": {
+          "$ref": "#/$defs/xsai_vector_epoch_policy"
+        }
+      }
+    },
+    "xsai_vector_epoch_policy": {
+      "type": "object",
+      "description": "Effective XSAI VL/VTYPE epoch visibility and completion rules. Conditions are expressed by semantic dataflow topology rather than kernel or mnemonic names.",
+      "additionalProperties": false,
+      "required": [
+        "enabled",
+        "load_only_visibility_cycles",
+        "multi_load_drain_cycles",
+        "chained_compute_drain_cycles",
+        "parallel_reduction_overlap_cycles",
+        "mixed_store_reduction_capacity",
+        "evidence"
+      ],
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "load_only_visibility_cycles": {
+          "$ref": "#/$defs/number_or_measure",
+          "description": "Additional VL-state visibility time for loads in an epoch that has no computed store or reduction terminal."
+        },
+        "multi_load_drain_cycles": {
+          "$ref": "#/$defs/number_or_measure",
+          "description": "Effective post-store drain for an epoch whose computed store depends on at least two architectural vector loads."
+        },
+        "chained_compute_drain_cycles": {
+          "$ref": "#/$defs/number_or_measure",
+          "description": "Effective post-store drain for an epoch whose computed store depends on at least two architectural vector-compute operations and fewer than two vector loads."
+        },
+        "parallel_reduction_overlap_cycles": {
+          "$ref": "#/$defs/number_or_measure",
+          "description": "Overlap allowed before the final completion of an epoch containing multiple independent reductions."
+        },
+        "mixed_store_reduction_capacity": {
+          "$ref": "#/$defs/positive_integer_or_measure",
+          "description": "Maximum mixed computed-store plus reduction epochs admitted before a terminal result completes."
         },
         "evidence": {
           "type": "array",

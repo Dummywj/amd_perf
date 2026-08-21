@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import copy
 from collections import Counter
 import unittest
 from pathlib import Path
 
 from src.simulator.engine import simulate
-from src.simulator.profile import load_profile
+from src.simulator.profile import Profile, load_profile
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -68,13 +69,20 @@ class PartialDispatchTest(unittest.TestCase):
         }
 
     def test_xsai_m4_vector_load_drains_across_dispatch_cycles(self) -> None:
-        bound = self.profile.bind(self._m4_vector_load_trace())
+        # Keep this dispatch-only regression independent of calibrated VLSU
+        # service lifetime, which is covered by test_vlsu_policy.py.
+        data = copy.deepcopy(self.profile.data)
+        data["backend"]["vector_memory"].pop("service_capacity", None)
+        data["backend"]["vector_memory"].pop("service_cycles", None)
+        data["backend"]["xsai_rvv"]["vector_epochs"]["enabled"] = False
+        profile = Profile(self.profile.path, data, "partial-dispatch-only")
+        bound = profile.bind(self._m4_vector_load_trace())
         # XSAI's unit-stride memory path includes an i2v preparation uop in
         # addition to the four AGU/load flow pairs.
         self.assertEqual(len(bound.uops), 9)
         self.assertEqual(bound.macros[0].dispatch_width_units, 9)
 
-        result = simulate(bound, self.profile)
+        result = simulate(bound, profile)
         macro = result.trace.macros[0]
         self.assertEqual(macro.dispatch_tick, 0)
         self.assertEqual(macro.rob_entry_count, 1)

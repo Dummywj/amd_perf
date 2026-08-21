@@ -142,9 +142,10 @@ RVV 动态前端，以及独立 XSAI-RVV backend-uop 展开和事件循环已完
 difftest 采集与验收完成，形成 41 个微基准 case x 5
 和 12 kernel x 3 N 的 clean 产物；另有 13-case VSET/VL/VLSU 矩阵，关键 hash 与门禁记录
 在 profile measurement source 中。迁移前的 36 点通用后端基线 MAPE 为 **47.04%**，
-13-case 定向矩阵为 **47.94%**；它们保留为独立后端的比较基线，不代表新后端已经完成
-对齐。对齐流结果还受到 DCache bank 访问模式影响，不能用来唯一反演 flow
-service 周期。普通 `v8` 的 directed load/load-use RTL 结果已经排除“统一 16-cycle vector
-load”假设；下一步应补齐真实逐迭代 `vsetvli a5,a5 -> VL writeback -> vector/VLSU
-consumer` 的状态可见性与 merge/replay 证据，再重新评估 36 点矩阵。该结果不是对齐完成声明；
-profile 仍为 `draft`，不得用 kernel 误差反向修改已测参数。
+13-case 定向矩阵基线为 **47.94%**。独立后端保留 LMUL/EMUL 拆分后的真实 scheduler
+slot，并增加 XSAI 专用的 vector-state epoch 与 VLSU service 策略；当前 36 点 MAPE 为
+**1.06%**、最大绝对相对误差为 **4.22%**，13-case 定向矩阵 MAPE 为 **9.28%**。
+所有 kernel 点均在 ±5% 内。profile 仍保持 `draft`：epoch drain/visibility 是由 clean
+RTL 矩阵校准的等效约束，不宣称逐周期复刻 DCache bank 仲裁、VLSU replay 或
+merge-buffer 状态机，也不得将这些数值外推为物理 pipe 数量。其中 reduction overlap
+与 mixed capacity 仍是低置信 kernel-fit 参数，后续需要独立定向 holdout 才能升置信度。

@@ -415,4 +415,5 @@ L1 模型稳定前不使用 L2/L3/DRAM 结果评价执行后端。
 2. 已同意 Hot-L1/L2-L3/DRAM 的误差阈值 `10%/15%/25%`。
 3. 已同意缺失 opcode recipe 先生成独立候选报告，审核后才追加到 Zen 4 profile。
 4. 已改为专门的微架构相关 scalar/control 拟合分组；实施顺序必须是 schema、Zen 4 profile、模拟器，且保留训练/验证隔离。
-5. 已同意 RVV 在没有具体微架构 profile 前只验证通用后端接口，不宣称周期准确性。
+5. 历史结论：RVV 在没有具体微架构 profile 前只验证通用后端接口，不宣称周期准确性；
+   XSAI profile 建立后已改用独立 `xsai-rvv` 执行后端，Zen4 通用后端保持冻结。

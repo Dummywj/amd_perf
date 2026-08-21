@@ -26,6 +26,15 @@ class XsaiBackendError(ValueError):
     """Raised when a bound trace cannot be represented by the XSAI backend."""
 
 
+_XSAI_VECTOR_COMPUTE_KINDS = {
+    "vector_fp",
+    "vector_integer",
+    "conversion",
+    "shuffle",
+    "vector_divide",
+}
+
+
 @dataclass(frozen=True)
 class XsaiBackendUop:
     """One XSAI scheduler entry produced from an architectural instruction.
@@ -666,6 +675,13 @@ class XsaiRvvEngine:
             ),
         }
         self.vector_memory_flow_counts: Counter[int] = Counter()
+        self.vector_epoch_policy = profile.xsai_vector_epoch_policy
+        self.vector_epoch_close: dict[str, tuple[str, int]] = {}
+        self.vector_epoch_load_visibility: set[str] = set()
+        self.mixed_epoch_terminal_by_config: dict[str, str] = {}
+        self.mixed_epoch_active: set[str] = set()
+        self.vector_epoch_blockers: Counter[str] = Counter()
+        self._build_vector_epoch_constraints()
         self.memory_compute_groups = self._discover_memory_compute_groups()
         self.pending_memory_compute_groups: set[str] = set()
         self.next_dispatch = 0
@@ -874,6 +890,18 @@ class XsaiRvvEngine:
                     )
                 },
             },
+            "xsai_vector_epochs": {
+                **self.vector_epoch_policy,
+                "close_edges": len(self.vector_epoch_close),
+                "load_visibility_uops": len(
+                    self.vector_epoch_load_visibility
+                ),
+                "mixed_epoch_terminals": len(
+                    self.mixed_epoch_terminal_by_config
+                ),
+                "peak_mixed_epochs": self.peaks["mixed_vector_epochs"],
+                "blockers": dict(sorted(self.vector_epoch_blockers.items())),
+            },
         }
         if self.backend_id == "xsai-rvv":
             summary["xsai_backend"] = {
@@ -932,6 +960,7 @@ class XsaiRvvEngine:
             if uop.complete_tick is not None:
                 continue
             uop.complete_tick = complete_tick
+            self.mixed_epoch_active.discard(uop.id)
             # Legacy profiles bind flow occupancy to completion. Profiles with
             # service_cycles release the flow token independently below.
             if self._vector_memory_service_ticks(uop) is None:
@@ -1008,6 +1037,211 @@ class XsaiRvvEngine:
         lanes[lane] = (
             now + flow_count * split["issue_ticks_per_flow"]
         )
+
+    def _build_vector_epoch_constraints(self) -> None:
+        """Classify XSAI vector-state epochs from semantic dataflow.
+
+        The policy is intentionally evaluated after backend-uop expansion, so
+        LMUL/EMUL scheduler slots remain visible while one architectural vector
+        instruction is still counted once for topology classification.
+        """
+        if not self.vector_epoch_policy.get("enabled", False):
+            return
+        ordered = sorted(self.uops.values(), key=lambda value: value.sequence)
+        configs: list[ExecutionUop] = []
+        for uop in ordered:
+            if not self._is_vector_config_uop(uop):
+                continue
+            if configs and configs[-1].parent_id == uop.parent_id:
+                continue
+            configs.append(uop)
+
+        ordered_index = {uop.id: index for index, uop in enumerate(ordered)}
+        memory_parents = {
+            uop.parent_id for uop in ordered if self._is_vector_memory_uop(uop)
+        }
+        for index, config in enumerate(configs):
+            start = ordered_index[config.id] + 1
+            end = (
+                ordered_index[configs[index + 1].id]
+                if index + 1 < len(configs)
+                else len(ordered)
+            )
+            body = ordered[start:end]
+            body_ids = {uop.id for uop in body}
+            loads = [
+                uop
+                for uop in body
+                if self._is_vector_memory_uop(uop) and uop.kind == "load_data"
+            ]
+            computed_stores = [
+                uop
+                for uop in body
+                if self._is_computed_vector_store(uop)
+            ]
+            reductions = [uop for uop in body if self._is_reduction_uop(uop)]
+
+            close_uop: ExecutionUop | None = None
+            close_offset = 0
+            if computed_stores and reductions:
+                terminal = self._reduction_terminal(body, reductions)
+                self.mixed_epoch_terminal_by_config[config.id] = terminal.id
+            elif computed_stores:
+                close_uop = computed_stores[-1]
+                load_parents = {uop.parent_id for uop in loads}
+                compute_ancestors, load_ancestors = (
+                    self._computed_store_ancestor_parents(
+                        close_uop, body_ids, memory_parents, load_parents
+                    )
+                )
+                load_count = len(load_ancestors)
+                compute_count = len(compute_ancestors)
+                if load_count >= 2:
+                    close_offset = self.vector_epoch_policy[
+                        "multi_load_drain_ticks"
+                    ]
+                elif compute_count >= 2:
+                    close_offset = self.vector_epoch_policy[
+                        "chained_compute_drain_ticks"
+                    ]
+            elif reductions:
+                close_uop = self._reduction_terminal(body, reductions)
+                reduction_count = len(
+                    {uop.parent_id for uop in reductions}
+                )
+                if reduction_count >= 2:
+                    close_offset = -self.vector_epoch_policy[
+                        "parallel_reduction_overlap_ticks"
+                    ]
+            elif loads:
+                close_uop = loads[-1]
+                self.vector_epoch_load_visibility.update(
+                    uop.id for uop in loads
+                )
+
+            if close_uop is not None and index + 1 < len(configs):
+                self.vector_epoch_close[configs[index + 1].id] = (
+                    close_uop.id,
+                    close_offset,
+                )
+
+    def _is_vector_config_uop(self, uop: ExecutionUop) -> bool:
+        return any(
+            self.semantic_kind_by_id.get(value) == "vector_config"
+            for value in uop.semantic_ids
+        ) or "vector_config" in uop.semantic_kinds
+
+    def _is_reduction_uop(self, uop: ExecutionUop) -> bool:
+        return any(
+            str(self.semantic_kind_by_id.get(value, "")).startswith(
+                "vector_reduce_"
+            )
+            for value in uop.semantic_ids
+        ) or any(
+            str(value).startswith("vector_reduce_")
+            for value in uop.semantic_kinds
+        )
+
+    def _is_computed_vector_store(self, uop: ExecutionUop) -> bool:
+        if not self._is_vector_memory_uop(uop) or uop.kind != "store_data":
+            return False
+        return any(
+            self.uops[dependency].parent_id != uop.parent_id
+            and self.uops[dependency].kind in _XSAI_VECTOR_COMPUTE_KINDS
+            for dependency in uop.dependencies
+        )
+
+    def _computed_store_ancestor_parents(
+        self,
+        store: ExecutionUop,
+        body_ids: set[str],
+        memory_parents: set[str],
+        load_parents: set[str],
+    ) -> tuple[set[str], set[str]]:
+        compute_result: set[str] = set()
+        load_result: set[str] = set()
+        visited: set[str] = set()
+        pending = list(store.dependencies)
+        while pending:
+            uop_id = pending.pop()
+            if uop_id in visited or uop_id not in body_ids:
+                continue
+            visited.add(uop_id)
+            uop = self.uops[uop_id]
+            if uop.parent_id in load_parents:
+                load_result.add(uop.parent_id)
+            elif (
+                uop.parent_id not in memory_parents
+                and uop.kind in _XSAI_VECTOR_COMPUTE_KINDS
+            ):
+                compute_result.add(uop.parent_id)
+            pending.extend(uop.dependencies)
+        return compute_result, load_result
+
+    @staticmethod
+    def _reduction_terminal(
+        body: list[ExecutionUop], reductions: list[ExecutionUop]
+    ) -> ExecutionUop:
+        last_reduction = max(reductions, key=lambda value: value.sequence)
+        trailing = [
+            uop
+            for uop in body
+            if uop.sequence >= last_reduction.sequence
+            and uop.kind in _XSAI_VECTOR_COMPUTE_KINDS
+        ]
+        return trailing[-1] if trailing else last_reduction
+
+    def _vector_epoch_blocker(
+        self, uop: ExecutionUop, now: int
+    ) -> tuple[str | None, int]:
+        if not self.vector_epoch_policy.get("enabled", False):
+            return None, now
+        if uop.id in self.vector_epoch_load_visibility:
+            completed = [
+                self.uops[value].complete_tick
+                for value in uop.vector_state_dependencies
+            ]
+            if completed and all(value is not None for value in completed):
+                ready = max(int(value) for value in completed) + int(
+                    self.vector_epoch_policy["load_only_visibility_ticks"]
+                )
+                if ready > now:
+                    return "xsai_vector_state_load_visibility", ready
+
+        close = self.vector_epoch_close.get(uop.id)
+        if close is not None:
+            terminal = self.uops[close[0]]
+            offset = close[1]
+            if terminal.complete_tick is not None:
+                ready = terminal.complete_tick + offset
+            elif terminal.issue_tick is not None:
+                ready = terminal.issue_tick + terminal.latency_ticks + offset
+            else:
+                ready = math.inf
+            if ready > now:
+                return "xsai_vector_epoch_completion", ready
+
+        if uop.id in self.mixed_epoch_terminal_by_config:
+            capacity = int(
+                self.vector_epoch_policy["mixed_store_reduction_capacity"]
+            )
+            if len(self.mixed_epoch_active) >= capacity:
+                known = [
+                    terminal.issue_tick + terminal.latency_ticks
+                    for terminal_id in self.mixed_epoch_active
+                    for terminal in (self.uops[terminal_id],)
+                    if terminal.issue_tick is not None
+                ]
+                return (
+                    "xsai_mixed_epoch_capacity",
+                    min(known) if known else math.inf,
+                )
+        return None, now
+
+    def _open_vector_epoch(self, uop: ExecutionUop) -> None:
+        terminal = self.mixed_epoch_terminal_by_config.get(uop.id)
+        if terminal is not None:
+            self.mixed_epoch_active.add(terminal)
 
     def _dispatch(self, now: int) -> None:
         width = int(self.profile.pipeline["dispatch_macro_ops_per_cycle"])
@@ -1467,6 +1701,7 @@ class XsaiRvvEngine:
             uop.ready_tick = self._dependency_ready_tick(uop)
             uop.issue_tick = now
             self.unissued_dispatched.remove(uop.id)
+            self._open_vector_epoch(uop)
             uop.resource = resource_id
             uop.resource_lane = lane
             uop.execution_unit = execution_unit
@@ -1593,6 +1828,10 @@ class XsaiRvvEngine:
         dependency_ready = self._dependency_ready_tick(uop)
         if dependency_ready > now:
             return "dependency", dependency_ready
+        epoch_reason, epoch_earliest = self._vector_epoch_blocker(uop, now)
+        if epoch_reason:
+            self.vector_epoch_blockers[epoch_reason] += 1
+            return epoch_reason, epoch_earliest
         if uop.issue_after_uop:
             previous = self.uops[uop.issue_after_uop]
             if previous.issue_tick is None:
@@ -2096,6 +2335,9 @@ class XsaiRvvEngine:
         for access_kind, inflight in self.vector_memory_inflight.items():
             key = f"vector_memory_inflight_{access_kind}"
             self.peaks[key] = max(self.peaks[key], len(inflight))
+        self.peaks["mixed_vector_epochs"] = max(
+            self.peaks["mixed_vector_epochs"], len(self.mixed_epoch_active)
+        )
 
     @staticmethod
     def _event(kind: str, tick: int, uop: ExecutionUop) -> dict[str, Any]:
